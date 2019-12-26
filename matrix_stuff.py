@@ -21,36 +21,37 @@ def letterify(size):
 	
 	return lambda r,c: cell_letter[r][c]
 
-def optimize(T, txt): # optimize m2 - m4 to not do redudant calculations
-	def _optimize(T, txt, op, var_len):
+# optimize away duplicate subexpressions
+# this is what the c++ compiler does when optimizing, i mainly just did this for fun, probably should turn this off
+def common_subexpression_elimination(T, txt): # WARNING: This does not understand operator precedence or even unary operators so it might totally break any code, it works in my specific case 
+	def iteration(T, txt, op, len):
 		import re
 
-		def multiple_replace(string, rep_dict):
-			pattern = re.compile("|".join([re.escape(k) for k in sorted(rep_dict,key=len,reverse=True)]), flags=re.DOTALL)
-			return pattern.sub(lambda x: rep_dict[x.group(0)], string)
-
-		ops = [tuple(multiple_replace(x, {' ':'', '(':'', ')':''}).split(op)) for x in \
-			re.findall(rf"(?:\b|\(?)[a-z]{{{var_len}}}\s*\{op}\s*[a-z]{{{var_len}}}(?:\)?|\b)", txt)]
+		ops = re.findall(rf"([a-z]{{{len}}})\s*(\{op})\s*([a-z]{{{len}}})", txt) # matches abc * def into groups (abc, *, def)
 		ops_txt = ''
 
-		ops_set = set(ops)
+		ops_set = set(ops) # eliminate duplicates
 		ops = [ (lm, ops.count(lm)) for lm in ops_set ]
 
-		for lm,count in ops:
-			if count > 1:
-				a,b = lm
-				shortform = f'{a}{b}'
-				txt = re.sub(rf"\b{a}\s*\{op}\s*{b}\b", shortform, txt)
-				ops_txt += f'{T} {shortform} = {a} {op} {b};\n'
+		for (a, op, b), count in ops:
+			if count > 1: # only replace duplicates not single occurrances
+				temporary = f'{a}{b}'
+				ops_txt += f'{T} {temporary} = {a} {op} {b};\n' # add temp variable calculation
+				txt = re.sub(rf"\b{a}\s*\{op}\s*{b}\b", temporary, txt) # use temporary variable by replacing 'a * b' with 'ab'
+
+		txt = re.sub(r'\(\s*([a-z]+)\s*\)', r'\1', txt) # remove unneeded parentheses around single variables '(abc)' -> 'abc' but never '(a * b)' -> 'a * b'
+
 		return ops_txt, txt
 
 	ops_txt = ''
 
-	res_ops_txt, txt = _optimize(T, txt, '*', 1)
-	ops_txt += res_ops_txt
-
-	res_ops_txt, txt = _optimize(T, txt, '-', 2)
+	res_ops_txt, txt = iteration(T, txt, '*', 1)
 	ops_txt += ('\n' if ops_txt else '') + res_ops_txt
+	
+	res_ops_txt, txt = iteration(T, txt, '-', 2)
+	ops_txt += ('\n' if ops_txt else '') + res_ops_txt
+
+	# there are still some duplicates in float4x4 inverse but these are harder to optimize
 
 	return ops_txt +'\n'+ txt if ops_txt else txt
 	
@@ -58,23 +59,24 @@ def stats(txt):
 	import re
 	muls = txt.count("*")
 	adds = txt.count("+") + txt.count("-")
-	divs = len(re.findall(r"[^/]/[^/]", txt))
+	divs = len(re.findall(r"[^/]/[^/]", txt)) # count / without counting // comments
 	stats = f'// {muls} muls, {adds} adds, {divs} divs = {muls + adds + divs} ops'
 	return stats
 
-def gen_determinate_code(T, size):
+def gen_determinant_code(T, size):
 	cell = letterify(size)
 
-	txt, expr = _gen_determinate_code(T, size, cell)
+	txt, expr = _gen_determinant_code(T, size, cell)
+	
+	txt = txt + f'return %s;' % expr
 
-	unopt_stats = stats(txt + expr)
-	txt = optimize(T, txt)
-	opt_stats = stats(txt + expr)
+	#unopt_stats = stats(txt)
+	#txt = common_subexpression_elimination(T, txt)
+	#opt_stats = stats(txt)
 	
 	txt = 'LETTERIFY\n\n' + txt
-	txt = txt + f'return %s;' % expr
 	
-	txt = f'// optimized from:  {unopt_stats}\n// to:              {opt_stats}\n' + txt
+	#txt = f'// optimized from:  {unopt_stats}\n// to:              {opt_stats}\n' + txt
 	return txt
 
 # get cell r,c coords in matrix for minor matrix at minor_r,minor_c
@@ -84,7 +86,7 @@ def get_minor_cell(r,c, minor_r,minor_c):
 def sign(r,c): # signs of cofactors
 	return ('+','-')[ (r%2) ^ (c%2) ]
 
-def _gen_determinate_code(T, size, cell, det_chain='det', depth=0):
+def _gen_determinant_code(T, size, cell, det_chain='det', depth=0):
 	txt = ''
 	
 	if size == 1:
@@ -99,7 +101,7 @@ def _gen_determinate_code(T, size, cell, det_chain='det', depth=0):
 		for c in range(size):
 			det = f'{det_chain}_{cell(0,c)}'
 
-			minor_txt, minor_expr = _gen_determinate_code(T, size-1,
+			minor_txt, minor_expr = _gen_determinant_code(T, size-1,
 				lambda minor_r,minor_c: cell(*get_minor_cell(minor_r,minor_c, 0,c)), det, depth+1)
 
 			txt += indent(minor_txt, depth)
@@ -118,7 +120,7 @@ def gen_inverse_code(M, T, size):
 	txt = ''
 	txt += f'{T} det;\n{{ // clac determinate\n'
 
-	det_txt, det_expr = _gen_determinate_code(T, size, cell)
+	det_txt, det_expr = _gen_determinant_code(T, size, cell)
 	txt += det_txt
 	txt += f'det = {det_expr};\n}}\n'
 	txt += f'{T} inv_det = {T}(1) / det;\n'
@@ -130,7 +132,7 @@ def gen_inverse_code(M, T, size):
 		for c in range(size):
 			cofac = f'cofac_{r}{c}'
 
-			det_txt, det_expr = _gen_determinate_code(T, size-1,
+			det_txt, det_expr = _gen_determinant_code(T, size-1,
 				lambda minor_r,minor_c: cell(*get_minor_cell(minor_r,minor_c, r,c)), cofac)
 
 			txt += indent(det_txt, 1) + f'{T} {cofac} = {det_expr};\n' + ('\n' if det_txt else '')
@@ -146,11 +148,11 @@ def gen_inverse_code(M, T, size):
 
 	txt += f'\nreturn ret;'
 	
-	unopt_stats = stats(txt)
-	txt = optimize(T, txt)
-	opt_stats = stats(txt)
+	#unopt_stats = stats(txt)
+	#txt = common_subexpression_elimination(T, txt)
+	#opt_stats = stats(txt)
 	
 	txt = 'LETTERIFY\n\n'+ txt
 
-	txt = f'// optimized from:  {unopt_stats}\n// to:              {opt_stats}\n' + txt
+	#txt = f'// optimized from:  {unopt_stats}\n// to:              {opt_stats}\n' + txt
 	return txt

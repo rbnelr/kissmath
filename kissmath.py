@@ -107,33 +107,29 @@ def type_exist(scalar_type, size):
 	return (str(scalar_type), size) in _types
 
 namespace = "kissmath"
-forceinline = False
 
 ########## File generation procedures
+
+myfloatsuff = {'float':'', 'double':'d'} # my postfix of Math constants
+cfloatsuff = {'float':'f', 'double':''} # postfix of Math constants
 
 def generic_math(T, f):
 	ST = T.scalar_type
 	
-	f.function(f'{T}', 'clamp',		f'{T} x, {T} a, {T} b',		f'return min(max(x, a), b);',
-			comment='clamp x into range [a, b]\nequivalent to min(max(x,a), b)')
-	f.function(f'{T}', 'clamp',		f'{T} x',					f'return min(max(x, {T}(0)), {T}(1));',
-			comment='clamp x into range [0, 1]\nalso known as saturate in hlsl')
-
 	if ST in floats:
-		
-		isfloat = T is get_type('float')
-		mysuff = '' if isfloat else 'd'
-		csuff = 'f' if isfloat else ''
-
 		f += '\n//// Angle conversion\n\n'
 		
+		csuff = cfloatsuff[str(T.scalar_type)]
+		mysuff = myfloatsuff[str(T.scalar_type)]
+
 		f.function(f'{T}', 'radians',	f'{T} deg', f'return deg * DEG_TO_RAD{mysuff};', comment='converts degrees to radiants')
 		f.function(f'{T}', 'degrees',	f'{T} deg', f'return deg * DEG_TO_RAD{mysuff};', comment='converts radiants to degrees')
 		
 		f.header += '//// Linear interpolation\n\n'
 
 		f.function(f'{T}', 'lerp',	f'{T} a, {T} b, {T} t',
-				  f'return a * (1.0{csuff} - t) + b * t;',
+				  #f'return a * (1.0{csuff} - t) + b * t;',
+				  f'return t * (b - a) + a;',
 				  comment='linear interpolation\nlike getting the output of a linear function\nex. t=0 -> a ; t=1 -> b ; t=0.5 -> (a+b)/2')
 		f.function(f'{T}', 'map',	f'{T} x, {T} in_a, {T} in_b',
 				  f'return (x - in_a) / (in_b - in_a);',
@@ -177,138 +173,140 @@ def scalar_math(T, f):
 	BT = T.bool_type
 	IT = T.int_cast_type # int scalar for roundi funcs
 	
-	f.header += '''
-		#include <cmath>
-		#include <limits> // for std::numeric_limits<float>::quiet_NaN()
-		#include <cstdint>
-	\n'''
+	f.header += '#include <cmath>\n'
+	if T in floats:
+		f.header += '#include <limits> // for std::numeric_limits<float>::quiet_NaN()\n'
+	f.header += '#include <cstdint>\n\n'
 
 	f += f'namespace {namespace} {{\n'
-			
-	for t in {T, BT, IT}:
-		if t.stdint_type:
-			f.header += f'typedef {t.stdint_type} {t}; // typedef this because the _t suffix is kinda unwieldy when using these types often\n'
 	
-	f.header += '''
-		// Use std math functions for these
-		using std::abs;
-		using std::sin;
-		using std::cos;
-		using std::floor;
-		using std::ceil;
-		using std::pow;
-		using std::round;
-	\n'''
+	if str(T) != 'bool':
+		for t in {T, BT, IT}:
+			if t.stdint_type:
+				f.header += f'typedef {t.stdint_type} {t}; // typedef this because the _t suffix is kinda unwieldy when using these types often\n'
+	
+		f.header += '''
+			// Use std math functions for these
+			using std::abs;
+			using std::floor;
+			using std::ceil;
+			using std::pow;
+			using std::round;
+		\n'''
 
-	f.function(f'{T}', 'wrap', f'{T} x, {T} range', f'''
-		{T} modded = '''+ ('std::fmod(x, range)' if T in floats else 'x % range') +''';
-		if (range > 0) {
-			if (modded < 0) modded += range;
-		} else {
-			if (modded > 0) modded += range;
-		}
-		return modded;
-	''', comment='wrap x into range [0,range)\nnegative x wrap back to +range unlike c++ % operator\nnegative range supported')
+		f.function(f'{T}', 'wrap', f'{T} x, {T} range', f'''
+			{T} modded = '''+ ('std::fmod(x, range)' if T in floats else 'x % range') +''';
+			if (range > 0) {
+				if (modded < 0) modded += range;
+			} else {
+				if (modded > 0) modded += range;
+			}
+			return modded;
+		''', comment='wrap x into range [0,range)\nnegative x wrap back to +range unlike c++ % operator\nnegative range supported')
 
-	f.function(f'{T}', 'wrap', f'{T} x, {T} a, {T} b', f'''
-		x -= a;
-		{T} range = b -a;
-			
-		{T} modulo = wrap(x, range);
-			
-		return modulo + a;
-	''', comment='wrap x into [a,b) range')
-
-	if T in floats:
-		
-		isfloat = T is get_type('float')
-		mysuff = '' if isfloat else 'd'
-		csuff = 'f' if isfloat else ''
-
-		f.header += f'''
-			//// Math constants
-
-			constexpr {T} PI{mysuff}          = 3.1415926535897932384626433832795{csuff};
-			constexpr {T} TAU{mysuff}         = 6.283185307179586476925286766559{csuff};
-			constexpr {T} SQRT_2{mysuff}      = 1.4142135623730950488016887242097{csuff};
-			constexpr {T} EULER{mysuff}       = 2.7182818284590452353602874713527{csuff};
-			constexpr {T} DEG_TO_RAD{mysuff}  = 0.01745329251994329576923690768489{csuff}; // 180/PI
-			constexpr {T} RAD_TO_DEG{mysuff}  = 57.295779513082320876798154814105{csuff};  // PI/180
-		'''
-			
-		f.header += f'''
-			#if _MSC_VER && !__INTELRZ_COMPILER && !__clan_
-				constexpr {T} INF         = (float)(1e+300 * 1e+300);
-				constexpr {T} QNAN        = std::numeric_limits<float>::quiet_NaN();
-			#elif __GNUC__ || __clan_
-				constexpr {T} INF         = __builtin_inff();
-				constexpr {T} QNAN        = (float)__builtin_nan("0");
-			#endif
-		\n\n''' if isfloat else f'''
-			#if _MSC_VER && !__INTELRZ_COMPILER && !__clan_
-				constexpr {T} INFd         = 1e+300 * 1e+300;
-				constexpr {T} QNANd        = std::numeric_limits<double>::quiet_NaN();
-			#elif __GNUC__ || __clan_
-				constexpr {T} INFd         = __builtin_inf();
-				constexpr {T} QNANd        = __builtin_nan("0");
-			#endif
-		\n\n'''
-
-		f.function(f'{T}', 'wrap', f'{T} x, {T} a, {T} b, {IT}* quotient', f'''
+		f.function(f'{T}', 'wrap', f'{T} x, {T} a, {T} b', f'''
 			x -= a;
 			{T} range = b -a;
 			
 			{T} modulo = wrap(x, range);
-			*quotient = floori(x / range);
 			
 			return modulo + a;
-		''')
-		f += '\n'
-			
-		f.function(f'{IT}', 'floori',	f'{T} x', f'return ({IT})floor(x);', comment='floor and convert to int')
-		f.function(f'{IT}', 'ceili',	f'{T} x', f'return ({IT})ceil(x);', comment='ceil and convert to int')
-		f.function(f'{IT}', 'roundi',	f'{T} x', f'return '+ {'float':'std::lround(x)', 'double':'std::llround(x)'}[str(T)] +';',
-			 comment='round and convert to int')
-			
-		f += '\n'
-
-	#min_func = 'std::fmin(l,r)' if T in floats else f'l <= r ? l : r'
-	#max_func = 'std::fmax(l,r)' if T in floats else f'l >= r ? l : r'
-	min_func = f'l <= r ? l : r'
-	max_func = f'l >= r ? l : r'
+		''', comment='wrap x into [a,b) range')
 		
-	f.function(f'{T}', 'min',		f'{T} l, {T} r',			f'return {min_func};',
-			comment='returns the greater value of a and b')
-	f.function(f'{T}', 'max',		f'{T} l, {T} r',			f'return {max_func};',
-			comment='returns the smaller value of a and b')
+		f.function(f'{T}', 'clamp',		f'{T} x, {T} a, {T} b',		f'return min(max(x, a), b);',
+				comment='clamp x into range [a, b]\nequivalent to min(max(x,a), b)')
+		f.function(f'{T}', 'clamp',		f'{T} x',					f'return min(max(x, {T}(0)), {T}(1));',
+				comment='clamp x into range [0, 1]\nalso known as saturate in hlsl')
 
-	f.function(f'{T}', 'select',	f'{BT} c, {T} l, {T} r',	f'return c ? l : r;',
-			comment='equivalent to ternary c ? l : r\nfor conformity with vectors')
-
-	generic_math(T, f)
-
-	f += '\n'
-
-	abs_func = f'std::fabs(x)' if T in floats else f'std::abs(x)'
+		if T in floats:
 		
-	if T not in uints: # no abs for unsigned types
-		f.function(f'{T}', 'length',		f'{T} x',	f'return {abs_func};',
-			 comment="length(scalar) = abs(scalar)\nfor conformity with vectors")
-		f.function(f'{T}', 'length_sqr',	f'{T} x',	f'x = {abs_func};\nreturn x*x;',
-			 comment="length_sqr(scalar) = abs(scalar)^2\nfor conformity with vectors (for vectors this func is preferred over length to avoid the sqrt)")
+			csuff = cfloatsuff[str(T.scalar_type)]
+			mysuff = myfloatsuff[str(T.scalar_type)]
+
+			f.header += f'''
+				//// Math constants
+
+				constexpr {T} PI{mysuff}          = 3.1415926535897932384626433832795{csuff};
+				constexpr {T} TAU{mysuff}         = 6.283185307179586476925286766559{csuff};
+				constexpr {T} SQRT_2{mysuff}      = 1.4142135623730950488016887242097{csuff};
+				constexpr {T} EULER{mysuff}       = 2.7182818284590452353602874713527{csuff};
+				constexpr {T} DEG_TO_RAD{mysuff}  = 0.01745329251994329576923690768489{csuff}; // 180/PI
+				constexpr {T} RAD_TO_DEG{mysuff}  = 57.295779513082320876798154814105{csuff};  // PI/180
+			'''
 			
-		f.function(f'{T}', 'normalize',		f'{T} x',	f'return x / length(x);',
-			 comment="scalar normalize for conformity with vectors\nnormalize(-6.2f) = -1f, normalize(7) = 1, normalize(0) = <div 0>\ncan be useful in some cases")
-		
-		f.function(f'{T}', 'normalizesafe', f'{T} x', f'''
-			{T} len = length(x);
-			if (len == {T}(0)) {{
-				return {T}(0);
-			}}
-			return x /= len;
-		''', comment='normalize(x) for length(x) != 0 else 0')
+			f.header += f'''
+				#if _MSC_VER && !__INTELRZ_COMPILER && !__clan_
+					constexpr {T} INF         = (float)(1e+300 * 1e+300);
+					constexpr {T} QNAN        = std::numeric_limits<float>::quiet_NaN();
+				#elif __GNUC__ || __clan_
+					constexpr {T} INF         = __builtin_inff();
+					constexpr {T} QNAN        = (float)__builtin_nan("0");
+				#endif
+			\n\n''' if str(T) == 'float' else f'''
+				#if _MSC_VER && !__INTELRZ_COMPILER && !__clan_
+					constexpr {T} INFd         = 1e+300 * 1e+300;
+					constexpr {T} QNANd        = std::numeric_limits<double>::quiet_NaN();
+				#elif __GNUC__ || __clan_
+					constexpr {T} INFd         = __builtin_inf();
+					constexpr {T} QNANd        = __builtin_nan("0");
+				#endif
+			\n\n'''
+
+			f.function(f'{T}', 'wrap', f'{T} x, {T} a, {T} b, {IT}* quotient', f'''
+				x -= a;
+				{T} range = b -a;
+			
+				{T} modulo = wrap(x, range);
+				*quotient = floori(x / range);
+			
+				return modulo + a;
+			''')
+			f += '\n'
+			
+			f.function(f'{IT}', 'floori',	f'{T} x', f'return ({IT})floor(x);', comment='floor and convert to int')
+			f.function(f'{IT}', 'ceili',	f'{T} x', f'return ({IT})ceil(x);', comment='ceil and convert to int')
+			f.function(f'{IT}', 'roundi',	f'{T} x', f'return '+ {'float':'std::lround(x)', 'double':'std::llround(x)'}[str(T)] +';',
+				 comment='round and convert to int')
+			
+			f += '\n'
+
+		#min_func = 'std::fmin(l,r)' if T in floats else f'l <= r ? l : r'
+		#max_func = 'std::fmax(l,r)' if T in floats else f'l >= r ? l : r'
+		min_func = f'l <= r ? l : r'
+		max_func = f'l >= r ? l : r'
+	
+		f.function(f'{T}', 'min',		f'{T} l, {T} r',			f'return {min_func};',
+				comment='returns the greater value of a and b')
+		f.function(f'{T}', 'max',		f'{T} l, {T} r',			f'return {max_func};',
+				comment='returns the smaller value of a and b')
+
+		f.function(f'{T}', 'select',	f'{BT} c, {T} l, {T} r',	f'return c ? l : r;',
+				comment='equivalent to ternary c ? l : r\nfor conformity with vectors')
+
+		generic_math(T, f)
 
 		f += '\n'
+
+		abs_func = f'std::fabs(x)' if T in floats else f'std::abs(x)'
+		
+		if T not in uints: # no abs for unsigned types
+			f.function(f'{T}', 'length',		f'{T} x',	f'return {abs_func};',
+				 comment="length(scalar) = abs(scalar)\nfor conformity with vectors")
+			f.function(f'{T}', 'length_sqr',	f'{T} x',	f'x = {abs_func};\nreturn x*x;',
+				 comment="length_sqr(scalar) = abs(scalar)^2\nfor conformity with vectors (for vectors this func is preferred over length to avoid the sqrt)")
+			
+			f.function(f'{T}', 'normalize',		f'{T} x',	f'return x / length(x);',
+				 comment="scalar normalize for conformity with vectors\nnormalize(-6.2f) = -1f, normalize(7) = 1, normalize(0) = <div 0>\ncan be useful in some cases")
+		
+			f.function(f'{T}', 'normalizesafe', f'{T} x', f'''
+				{T} len = length(x);
+				if (len == {T}(0)) {{
+					return {T}(0);
+				}}
+				return x /= len;
+			''', comment='normalize(x) for length(x) != 0 else 0')
+
+			f += '\n'
 
 	f += '}\n'
 
@@ -324,26 +322,22 @@ def gen_vector(V, f):
 	IV = V.int_cast_type
 	BV = V.bool_type
 	
-	isfloat = T is get_type('float')
-	mysuff = '' if isfloat else 'd'
-	csuff = 'f' if isfloat else ''
-
 	def unary_op(op, comment=''):
 		tmp = ', '.join(f'{op}v.{d}' for d in dims)
-		f.function(f'{V}', f'operator{op}', f'{V} v', f'return {V}({tmp});', forceinline=forceinline, comment=comment)
+		f.function(f'{V}', f'operator{op}', f'{V} v', f'return {V}({tmp});', comment=comment)
 	def binary_op(op, comment=''):
 		tmp = ', '.join(f'l.{d} {op} r.{d}' for d in dims)
-		f.function(f'{V}', f'operator{op}', f'{V} l, {V} r', f'return {V}({tmp});', forceinline=forceinline, comment=comment)
+		f.function(f'{V}', f'operator{op}', f'{V} l, {V} r', f'return {V}({tmp});', comment=comment)
 	def comparison_op(op, comment=''):
 		tmp = ', '.join(f'l.{d} {op} r.{d}' for d in dims)
 		f.function(f'{BV}', f'operator{op}', f'{V} l, {V} r', f'return {BV}({tmp});', comment=comment)
 	
 	def unary_func(func, arg='v', ret=None, comment=''):
 		ret = ret or V
-		f.function(f'{ret}', func, f'{V} {arg}', f'return {ret}(%s);' % ', '.join(f'{func}({arg}.{d})' for d in dims), forceinline=forceinline, comment=comment)
+		f.function(f'{ret}', func, f'{V} {arg}', f'return {ret}(%s);' % ', '.join(f'{func}({arg}.{d})' for d in dims), comment=comment)
 	def nary_func(func, args, comment=''):
 		f.function(f'{V}', func, ', '.join(f'{V} {a}' for a in args),
-			f'return {V}(%s);' % ', '.join(f'{func}(%s)' % ','.join(f'{a}.{d}' for a in args) for d in dims), forceinline=forceinline, comment=comment)
+			f'return {V}(%s);' % ', '.join(f'{func}(%s)' % ','.join(f'{a}.{d}' for a in args) for d in dims), comment=comment)
 
 	def compound_binary_op(op, comment=''):
 		if False: # compact
@@ -352,7 +346,7 @@ def gen_vector(V, f):
 		else:
 			body = ''.join(f'{d} {op}= r.{d};\n' for d in dims) + 'return *this;'
 
-		f.method(f'{V}', f'{V}', f'operator{op}=', f'{V} r', body, forceinline=forceinline, comment=comment)
+		f.method(f'{V}', f'{V}', f'operator{op}=', f'{V} r', body, comment=comment)
 
 	def casting_op(to_type, comment=''):
 		tt = to_type.scalar_type
@@ -366,18 +360,13 @@ def gen_vector(V, f):
 	other_size_vecs = [v for v in all_vectors if v.size != size and v.scalar_type == T]
 	other_type_vecs = [v for v in all_vectors if v.size == size and v.scalar_type != T]
 
-	forward_decl_vecs = other_size_vecs +[BV]+ other_type_vecs
+	forward_decl_vecs = set(other_size_vecs +[BV]+ other_type_vecs)
 	
-	f.header += f'#include "{T.scalar_type}.hpp"\n\n'
-	f.header += f'\nnamespace {namespace} {{\n'
+	if str(T.scalar_type) != 'bool':
+		f.header += f'#include "{T.scalar_type}.hpp"\n\n'
+	f.header += f'namespace {namespace} {{\n'
 		
 	f.header += '//// forward declarations\n\n'
-	
-	for v in forward_decl_vecs:
-		if v.scalar_type.stdint_type:
-			f.header += f'typedef {v.scalar_type.stdint_type} {v.scalar_type}; // typedef this because the _t suffix is kinda unwieldy when using these types often\n'
-	
-	f.header += '\n'
 
 	for v in forward_decl_vecs:
 		f.header += f'struct {v};\n'
@@ -386,6 +375,12 @@ def gen_vector(V, f):
 	f.source += ''.join(f'#include "{n}.hpp"\n' for n in forward_decl_vecs)
 
 	f.source += f'\nnamespace {namespace} {{\n'
+	
+	f.source += '//// forward declarations\n// typedef these because the _t suffix is kinda unwieldy when using these types often\n\n'
+
+	for v in forward_decl_vecs:
+		if v.scalar_type.stdint_type:
+			f.source += f'typedef {v.scalar_type.stdint_type} {v.scalar_type};\n'
 	
 	f.header += f'''
 		struct {V} {{
@@ -397,21 +392,21 @@ def gen_vector(V, f):
 			}};
 		\n'''
 		
-	f.method(V, f'{T}&', 'operator[]', 'int i', 'return arr[i];', forceinline=forceinline,
+	f.method(V, f'{T}&', 'operator[]', 'int i', 'return arr[i];',
 		  comment='Component indexing operator')
-	f.method(V, f'{T} const&', 'operator[]', 'int i', 'return arr[i];', const=True, forceinline=forceinline,
+	f.method(V, f'{T} const&', 'operator[]', 'int i', 'return arr[i];', const=True,
 		  comment='Component indexing operator')
 
 	f += '\n'
 	
-	f.constructor(f'{V}', args='', forceinline=forceinline,
+	f.constructor(f'{V}', args='',
 			   comment='uninitialized constructor')
-	f.constructor(f'{V}', args=f'{T} all',						init_list=', '.join(f'{d}{{all}}' for d in dims), forceinline=forceinline,
+	f.constructor(f'{V}', args=f'{T} all',						init_list=', '.join(f'{d}{{all}}' for d in dims),
 		comment=
 		'''sets all components to one value
 		implicit constructor -> float3(x,y,z) * 5 will be turned into float3(x,y,z) * float3(5) by to compiler to be able to execute operator*(float3, float3), which is desirable
 		and short initialization like float3 a = 0; works''')
-	f.constructor(f'{V}', args=', '.join(f'{T} {d}' for d in dims), init_list=', '.join(f'{d}{{{d}}}' for d in dims), forceinline=forceinline,
+	f.constructor(f'{V}', args=', '.join(f'{T} {d}' for d in dims), init_list=', '.join(f'{d}{{{d}}}' for d in dims),
 		comment='supply all components')
 	
 	for vsz in range(2,size):
@@ -438,10 +433,10 @@ def gen_vector(V, f):
 		f.method(f'{V}', '', f'operator {U}', '', f'return {U}(%s);' % ', '.join(vdims), const=True, explicit=True, comment="truncating cast operator")
 		
 	f += '\n//// Type cast operators\n\n'
-	if str(T) != 'bool':
-		for to_vec in other_type_vecs:
-			casting_op(to_vec, "type cast operator")
+	for to_vec in other_type_vecs:
+		casting_op(to_vec, "type cast operator")
 			
+	if str(T) != 'bool':
 		f += '\n'
 
 		for op in ('+', '-', '*', '/'):
@@ -456,7 +451,7 @@ def gen_vector(V, f):
 		f.function(f'{T}', 'all', f'{V} v', 'return %s;' % ' && '.join(f'v.{d}' for d in dims), comment='all components are true')
 		f.function(f'{T}', 'any', f'{V} v', 'return %s;' % ' || '.join(f'v.{d}' for d in dims), comment='any component is true')
 		
-		f += '\n//// arthmethic ops\n\n'
+		f += '\n//// boolean ops\n\n'
 		
 		unary_op('!')
 		binary_op('&&')
@@ -465,10 +460,22 @@ def gen_vector(V, f):
 		f += '\n//// comparison ops\n\n'
 	else:
 		f += '\n//// arthmethic ops\n\n'
-		for op in ['+', '-']:
-			unary_op(op)
-		for op in ['+', '-', '*', '/']:
-			binary_op(op)
+		unary_op('+')
+		if T not in uints:
+			unary_op('-')
+
+		binary_op('+')
+		binary_op('-')
+		binary_op('*')
+		binary_op('/')
+		
+		f += '\n//// bitwise ops\n\n'
+		
+		if T not in floats:
+			unary_op('~')
+			binary_op('&')
+			binary_op('|')
+			binary_op('^')
 		
 		f += '\n//// comparison ops\n\n'
 		comparison_op('<', comment="componentwise comparison returns a bool vector")
@@ -486,13 +493,14 @@ def gen_vector(V, f):
 	if str(T) != 'bool':
 		f += '\n//// misc ops\n'
 		
-		unary_func('abs', comment="componentwise absolute")
+		if T not in uints:
+			unary_func('abs', comment="componentwise absolute")
 		
 		nary_func('min', ('l', 'r'), comment="componentwise minimum")
 		nary_func('max', ('l', 'r'), comment="componentwise maximum")
 
 		f.function(f'{V}', 'clamp', f'{V} x, {V} a, {V} b', f'return min(max(x,a), b);', comment="componentwise clamp into range [a,b]")
-		f.function(f'{V}', 'clamp', f'{V} x', f'return min(max(x, 0.0{csuff}), 1.0{csuff});', comment="componentwise clamp into range [0,1] also known as saturate in hlsl")
+		f.function(f'{V}', 'clamp', f'{V} x', f'return min(max(x, {T}(0)), {T}(1));', comment="componentwise clamp into range [0,1] also known as saturate in hlsl")
 		
 		def minmax_component(mode):
 			op = {'min':'<=', 'max':'>='}[mode]
@@ -532,40 +540,39 @@ def gen_vector(V, f):
 
 		generic_math(V, f)
 
-		f += '\n//// linear algebra ops\n\n'
+		f += '\n//// Vector math\n\n'
 		
-		f.function(f'{FT}', 'length', f'{V} v',				f'return sqrt(({FT})(%s));' % ' + '.join(f'v.{d} * v.{d}' for d in dims), comment='magnitude of vector')
-		f.function(f'{T}', 'length_sqr', f'{V} v',			f'return %s;' % ' + '.join(f'v.{d} * v.{d}' for d in dims), comment='squared magnitude of vector, cheaper than length() because it avoids the sqrt(), some algorithms only need the squared magnitude')
-		f.function(f'{FT}', 'distance', f'{V} a, {V} b',	f'return length(a - b);', comment='distance between points, equivalent to length(a - b)')
-		f.function(f'{FV}', 'normalize', f'{V} v',			f'return {FV}(v) / length(v);', comment='normalize vector so that it has length() = 1, undefined for zero vector')
-		f.function(f'{FV}', 'normalizesafe', f'{V} v', f'''
-			{FT} len = length(v);
-			if (len == {FT}(0)) {{
-				return {FT}(0);
-			}}
-			return {FV}(v) / {FV}(len);
-		''', comment='normalize vector so that it has length() = 1, returns zero vector if vector was zero vector')
+		if T not in uints:
+			f.function(f'{FT}', 'length', f'{V} v',				f'return sqrt(({FT})(%s));' % ' + '.join(f'v.{d} * v.{d}' for d in dims), comment='magnitude of vector')
+			f.function(f'{T}', 'length_sqr', f'{V} v',			f'return %s;' % ' + '.join(f'v.{d} * v.{d}' for d in dims), comment='squared magnitude of vector, cheaper than length() because it avoids the sqrt(), some algorithms only need the squared magnitude')
+			f.function(f'{FT}', 'distance', f'{V} a, {V} b',	f'return length(a - b);', comment='distance between points, equivalent to length(a - b)')
+			f.function(f'{FV}', 'normalize', f'{V} v',			f'return {FV}(v) / length(v);', comment='normalize vector so that it has length() = 1, undefined for zero vector')
+			f.function(f'{FV}', 'normalizesafe', f'{V} v', f'''
+				{FT} len = length(v);
+				if (len == {FT}(0)) {{
+					return {FT}(0);
+				}}
+				return {FV}(v) / {FV}(len);
+			''', comment='normalize vector so that it has length() = 1, returns zero vector if vector was zero vector')
 		
-		f.function(f'{T}', 'dot', f'{V} l, {V} r', f'return %s;' % ' + '.join(f'l.{d} * r.{d}' for d in dims), comment='dot product')
+			f.function(f'{T}', 'dot', f'{V} l, {V} r', f'return %s;' % ' + '.join(f'l.{d} * r.{d}' for d in dims), comment='dot product')
 		
-		if size == 3:
-			f.function(f'{V}', 'cross', f'{V} l, {V} r', comment='3d cross product', body=f'''
-				return {V}(
-					l.y * r.z - l.z * r.y,
-					l.z * r.x - l.x * r.z,
-					l.x * r.y - l.y * r.x);
-			''')
-				
-		elif size == 2:
-			f.function(f'{T}', 'cross', f'{V} l, {V} r', 'return l.x * r.y - l.y * r.x;',
-				comment='''
-				2d cross product hack for convenient 2d stuff
-				same as cross({T.name[:-2]}3(l, 0), {T.name[:-2]}3(r, 0)).z,
-				ie. the cross product of the 2d vectors on the z=0 plane in 3d space and then return the z coord of that (signed mag of cross product)
+			if size == 3:
+				f.function(f'{V}', 'cross', f'{V} l, {V} r', comment='3d cross product', body=f'''
+					return {V}(
+						l.y * r.z - l.z * r.y,
+						l.z * r.x - l.x * r.z,
+						l.x * r.y - l.y * r.x);
 				''')
+				
+			elif size == 2:
+				f.function(f'{T}', 'cross', f'{V} l, {V} r', 'return l.x * r.y - l.y * r.x;',
+					comment='''2d cross product hack for convenient 2d stuff
+					same as cross({T.name[:-2]}3(l, 0), {T.name[:-2]}3(r, 0)).z,
+					ie. the cross product of the 2d vectors on the z=0 plane in 3d space and then return the z coord of that (signed mag of cross product)''')
 			
-			f.function(f'{V}', 'rotate90', f'{V} v', f'return {V}(-v.y, v.x);',
-				comment=f'rotate 2d vector counterclockwise 90 deg, ie. {V}(-y, x) which is fast')
+				f.function(f'{V}', 'rotate90', f'{V} v', f'return {V}(-v.y, v.x);',
+					comment=f'rotate 2d vector counterclockwise 90 deg, ie. {V}(-y, x) which is fast')
 
 	f += '}\n'
 
@@ -576,7 +583,7 @@ def gen_matrix(M, f):
 
 	mpass = 'const&'
 
-	# standart math way of writing matrix size:
+	# standard math way of writing matrix size:
 	# size[0] = rows	ie. height
 	# size[1] = columns	ie. width
 
@@ -588,8 +595,6 @@ def gen_matrix(M, f):
 
 	forward_decl_vecs = [m.name for m in other_size_mats] + [m.name for m in other_type_mats]
 	
-	f.header += '#include "kissmath.hpp"\n\n'
-
 	for v in set((V, RV)):
 		f.header += f'#include "{v}.hpp"\n'
 		
@@ -612,7 +617,7 @@ def gen_matrix(M, f):
 	def row_vecs(vec_format):	return ', '.join(vec_format.format(r=r) for r in range(size[0]))
 	def col_vecs(vec_format):	return ', '.join(vec_format.format(c=c) for c in range(size[1]))
 
-	def elementwise(op_format):
+	def componentwise(op_format):
 		return f'return {M}(%s);' % row_major(op_format)
 	
 	################
@@ -623,19 +628,19 @@ def gen_matrix(M, f):
 		
 	f += '//// Accessors\n\n'
 	#src += method(f, f'{M}', f'{T}&', 'get', F'int r, int c', 'return arr[c][r];', comment='get cell with r,c indecies (r=row, c=column)')
-	f.method(f'{M}', f'{T} const&', 'get', F'int r, int c', 'return arr[c][r];', const=True, comment='get cell with r,c indecies (r=row, c=column)', forceinline=forceinline)
+	f.method(f'{M}', f'{T} const&', 'get', F'int r, int c', 'return arr[c][r];', const=True, comment='get cell with row, column indecies')
 
 	#f.method(f'{M}', f'{V}&', 'get_column', F'int indx', 'return arr[indx];', comment='get matrix column')
-	f.method(f'{M}', f'{V} const&', 'get_column', F'int indx', 'return arr[indx];', const=True, comment='get matrix column', forceinline=forceinline)
+	f.method(f'{M}', f'{V} const&', 'get_column', F'int indx', 'return arr[indx];', const=True, comment='get matrix column')
 	
 	f.method(f'{M}', f'{RV}', 'get_row', F'int indx', f'return {RV}(%s);' % ', '.join(f'arr[{c}][indx]' for c in range(size[1])),
 		const=True, comment='get matrix row')
 	
 	f += '\n//// Constructors\n\n'
-	f.constructor(f'{M}', '', forceinline=forceinline)
+	f.constructor(f'{M}', '', comment='uninitialized constructor')
 
-	f.constructor(f'{M}', args=f'{T} all',						explicit=True, init_list='\narr{%s}' % col_vec_cells('all'),		forceinline=forceinline, comment='supply one value for all cells')
-	f.constructor(f'{M}', args=row_major(str(T) +' c{r}{c}'),	explicit=True, init_list='\narr{%s}' % col_vec_cells('c{r}{c}'),	forceinline=forceinline, comment='supply all cells, in row major order for readability -> c<r><c> (r=row, c=column)')
+	f.constructor(f'{M}', args=f'{T} all',						explicit=True, init_list='\narr{%s}' % col_vec_cells('all'),		comment='supply one value for all cells')
+	f.constructor(f'{M}', args=row_major(str(T) +' c{r}{c}'),	explicit=True, init_list='\narr{%s}' % col_vec_cells('c{r}{c}'),	comment='supply all cells, in row major order for readability -> c<row><column>')
 	
 	f += '\n// static rows() and columns() methods are preferred over constructors, to avoid confusion if column or row vectors are supplied to the constructor\n'
 	
@@ -650,7 +655,7 @@ def gen_matrix(M, f):
 		comment='supply all cells in column major order')
 
 	f += '\n'
-	f.static_method(f'{M}', f'{M}', 'identity', args='', forceinline=forceinline,
+	f.static_method(f'{M}', f'{M}', 'identity', args='',
 		comment='identity matrix',
 		body=f'return {M}(%s);' % ',\n'.join(','.join('1' if x==y else '0' for x in range(size[1])) for y in range(size[0])))
 	
@@ -671,33 +676,36 @@ def gen_matrix(M, f):
 			comment='typecast',
 			body=f'return {m.name}(%s);' % ',\n'.join(', '.join(f'({m.scalar_type})arr[{r}][{c}]' for c in range(m.size[1])) for r in range(m.size[0])))
 	
-	f += '\n// Elementwise operators\n\n'
+	f += '\n// Componentwise operators; These might be useful in some cases\n\n'
 
-	for op in ['+', '-', '*', '/']:
-		f.method(f'{M}', f'{M}&', f'operator{op}=', f'{T} r', f'*this = *this {op} r;\nreturn *this;')
+	f.method(f'{M}', f'{M}&', f'operator+=', f'{T} r', f'*this = *this + r;\nreturn *this;', comment='add scalar to all matrix cells')
+	f.method(f'{M}', f'{M}&', f'operator-=', f'{T} r', f'*this = *this - r;\nreturn *this;', comment='substract scalar from all matrix cells')
+	f.method(f'{M}', f'{M}&', f'operator*=', f'{T} r', f'*this = *this * r;\nreturn *this;', comment='multiply scalar with all matrix cells')
+	f.method(f'{M}', f'{M}&', f'operator/=', f'{T} r', f'*this = *this / r;\nreturn *this;', comment='divide all matrix cells by scalar')
 		
 	f += '\n// Matrix multiplication\n\n'
 
-	f.method(f'{M}', f'{M}&', 'operator*=', f'{M} {mpass} r', '*this = *this * r;\nreturn *this;')
+	f.method(f'{M}', f'{M}&', 'operator*=', f'{M} {mpass} r', '*this = *this * r;\nreturn *this;', comment='matrix-matrix muliplication')
 		
 	f.header += '};\n'
 
-	f += '\n// Elementwise operators\n\n'
+	f += '\n// Componentwise operators; These might be useful in some cases\n\n'
 	
-	for op in ['+', '-']:
-		f.function(f'{M}', 'operator'+ op, f'{M} {mpass} m', elementwise(op +'m.arr[{c}][{r}]'))
+	# These are probably not needed
+	#f.function(f'{M}', 'operator+', f'{M} {mpass} m', componentwise('+m.arr[{c}][{r}]'), comment='all cells positive\n(componentwise unary positive)')
+	#f.function(f'{M}', 'operator-', f'{M} {mpass} m', componentwise('-m.arr[{c}][{r}]'), comment='negate all cells\n(componentwise unary negative)')
 		
 	for op in ['+', '-', '*', '/']:
 		f += '\n'
 
 		name = f'operator{op}'
+		
+		if op == '*':	name = 'mul_componentwise'
+		elif op == '/':	name = 'div_componentwise'
 
-		if op == '*':	name = 'mul_elementwise'
-		elif op == '/':	name = 'div_elementwise'
-
-		f.function(f'{M}', name, f'{M} {mpass} l, {M} {mpass} r', elementwise(f'l.arr[{{c}}][{{r}}] {op} r.arr[{{c}}][{{r}}]'))
-		f.function(f'{M}', f'operator{op}', f'{M} {mpass} l, {T} r', elementwise(f'l.arr[{{c}}][{{r}}] {op} r'))
-		f.function(f'{M}', f'operator{op}', f'{T} l, {M} {mpass} r', elementwise(f'l {op} r.arr[{{c}}][{{r}}]'))
+		f.function(f'{M}', name, f'{M} {mpass} l, {M} {mpass} r', componentwise(f'l.arr[{{c}}][{{r}}] {op} r.arr[{{c}}][{{r}}]'), comment=f'componentwise matrix_cell {op} matrix_cell')
+		f.function(f'{M}', f'operator{op}', f'{M} {mpass} l, {T} r', componentwise(f'l.arr[{{c}}][{{r}}] {op} r'), comment=f'componentwise matrix_cell {op} scalar')
+		f.function(f'{M}', f'operator{op}', f'{T} l, {M} {mpass} r', componentwise(f'l {op} r.arr[{{c}}][{{r}}]'), comment=f'componentwise scalar {op} matrix_cell')
 	
 	f += '\n// Matrix ops\n\n'
 
@@ -713,16 +721,19 @@ def gen_matrix(M, f):
 
 			ret = get_type(T, (size[0], m.size[1])).name
 			args = f'{M} {mpass} l, {m} {mpass} r'
-			body = f'{ret} ret;\n%s\nreturn ret;' % '\n'.join(f'ret.arr[{c}] = l * r.arr[{c}];' for c in range(m.size[1]))
+			body = f'return {ret}::columns(%s);' % ',\n'.join(f'l * r.arr[{c}]' for c in range(m.size[1]))
+			comment='matrix-matrix multiply'
 		elif op == 'mv':
 			ret = f'{V}'
 			args = f'{M} {mpass} l, {RV} r'
-			body = f'{V} ret;\n%s\nreturn ret;' % '\n'.join(f'ret.{dims[r]} = %s;' % ' + '.join(f'l.arr[{c}].{dims[r]} * r.{dims[c]}' for c in range(size[1])) for r in range(size[0]))
+			body = f'return {V}(%s);' % ',\n'.join(' + '.join(f'l.arr[{c}].{dims[r]} * r.{dims[c]}' for c in range(size[1])) for r in range(size[0]))
+			comment='matrix-vector multiply'
 		elif op == 'vm':
 			ret = f'{RV}'
 			args = f'{V} l, {M} {mpass} r'
-			body = f'{RV} ret;\n%s\nreturn ret;' % '\n'.join(f'ret.{dims[c]} = %s;' % ' + '.join(f'l.{dims[r]} * r.arr[{c}].{dims[r]}' for r in range(size[0])) for c in range(size[1]))
-		f.function(ret, 'operator*', args, body)
+			body = f'return {RV}(%s);' % ',\n'.join(' + '.join(f'l.{dims[r]} * r.arr[{c}].{dims[r]}' for r in range(size[0])) for c in range(size[1]))
+			comment='vector-matrix multiply'
+		f.function(ret, 'operator*', args, body, comment=comment)
 	def matmul_shortform(op, r):
 		nonlocal f
 		if r == None:
@@ -732,13 +743,13 @@ def gen_matrix(M, f):
 		
 			f.function(f'{M}', 'operator*', f'{M} {mpass} l, {r} {mpass} r', f'''
 				return l * ({sqr})r;
-			''', comment=f'{M} * {r} = {M}, shortform for {M} * ({sqr}){r} = {M}')
+			''', comment=f'shortform for {M} * ({sqr}){r}')
 		elif op == 'mv':
 			v = get_type(T, size[1])
 		
 			f.function(f'{r}', 'operator*', f'{M} {mpass} l, {r} r', f'''
 				return l * {v}(r, 1);
-			''', comment=f'{M} * {r} = {r}, shortform for {M} * {v}({r}, 1) = {r}')
+			''', comment=f'shortform for {M} * {v}({r}, 1)')
 			
 
 	for m in all_matricies:
@@ -747,7 +758,7 @@ def gen_matrix(M, f):
 	matmul('vm')
 	
 	if size[0] == size[1]-1:
-		f += f'\n// Matrix op shortforms for working with {size[0]}x{size[0]+1} matricies as {size[0]}x{size[0]} matricies plus translation\n\n'
+		f += f'\n// Matrix operation shortforms so that you can treat a {size[0]}x{size[0]+1} matrix as a {size[0]}x{size[0]} matrix plus translation\n\n'
 
 		matmul_shortform('mm', get_type(T, (size[0],size[0])))
 		matmul_shortform('mm', get_type(T, size))
@@ -765,102 +776,131 @@ def gen_matrix(M, f):
 
 		f.source += ms.define_letterify(T, size[0]) + '\n'
 
-		f.function(f'{T}', 'det', f'{M} {mpass} mat', ms.gen_determinate_code(T, size[0]))
+		f.function(f'{T}', 'determinant', f'{M} {mpass} mat', ms.gen_determinant_code(T, size[0]))
 		f.function(f'{M}', 'inverse', f'{M} {mpass} mat', ms.gen_inverse_code(M, T, size[0]))
 		
 		f.source += '\n#undef LETTERIFY\n\n'
 
-	f += '} // namespace vector\n'
+	f += '}\n'
 
-def transformations(f):
-	src = ''
-
-	f.header += '#include "vector.hpp"\n\n'
+def transform2(f):
+	for t in ['float', 'double']:
+		V = get_type(t, 2)
+		M = get_type(t, (2,2))
+		HM = get_type(t, (2,3))
 		
-	f += 'namespace vector {\n\n'
+		f.header += f'#include "{V}.hpp"\n'
+		f.header += f'#include "{M}.hpp"\n'
+		f.header += f'#include "{HM}.hpp"\n\n'
+		
+	f.source += '#include <cmath>\n\n'
 	
-	f.function('fm2', 'rotate2', 'flt ang', '''
-		flt s = sin(ang), c = cos(ang);
-		return fm2(
-			 c, -s,
-			 s,  c
-		);
-	''')
-	f.function('fm2', 'scale', 'fv2 v', '''
-		return fm2(
-			v.x,   0,
-			  0, v.y
-		);
-	''')
-	f.function('fm2x3', 'translate', 'fv2 v', '''
-		return fm2x3(
-			1, 0, v.x,
-			0, 1, v.y
-		);
-	''')
+	f += f'namespace {namespace} {{\n\n'
 	
-	f += '\n'
+	for t in ['float', 'double']:
+		T = get_type(t)
+		V = get_type(t, 2)
+		M = get_type(t, (2,2))
+		HM = get_type(t, (2,3))
+
+		f.function(f'{M}', 'rotate2', f'{T} ang', f'''
+			{T} s = std::sin(ang), c = std::cos(ang);
+			return {M}(
+				 c, -s,
+				 s,  c
+			);
+		''')
+		f.function(f'{M}', 'scale', f'{V} v', f'''
+			return {M}(
+				v.x,   0,
+				  0, v.y
+			);
+		''')
+		f.function(f'{HM}', 'translate', f'{V} v', f'''
+			return {HM}(
+				1, 0, v.x,
+				0, 1, v.y
+			);
+		''')
+
+		f += '\n'
+
+	f += '}\n'
 	
-	f.function('fm3', 'rotate3_X', 'flt ang', '''
-		flt s = sin(ang), c = cos(ang);
-		return fm3(
-			 1,  0,  0,
-			 0,  c, -s,
-			 0,  s,  c
-		);
-	''')
-	f.function('fm3', 'rotate3_Y', 'flt ang', '''
-		flt s = sin(ang), c = cos(ang);
-		return fm3(
-			 c,  0,  s,
-			 0,  1,  0,
-			-s,  0,  c
-		);
-	''')
-	f.function('fm3', 'rotate3_Z', 'flt ang', '''
-		flt s = sin(ang), c = cos(ang);
-		return fm3(
-			 c, -s,  0,
-			 s,  c,  0,
-			 0,  0,  1
-		);
-	''')
-	f.function('fm3', 'scale', 'fv3 v', '''
-		return fm3(
-			v.x,   0,   0,
-			  0, v.y,   0,
-			  0,   0, v.z
-		);
-	''')
-	f.function('fm3x4', 'translate', 'fv3 v', '''
-		return fm3x4(
-			1, 0, 0, v.x,
-			0, 1, 0, v.y,
-			0, 0, 1, v.z
-		);
-	''')
+def transform3(f):
+	for t in ['float', 'double']:
+		V = get_type(t, 3)
+		M = get_type(t, (3,3))
+		HM = get_type(t, (3,4))
+		
+		f.header += f'#include "{V}.hpp"\n'
+		f.header += f'#include "{M}.hpp"\n'
+		f.header += f'#include "{HM}.hpp"\n\n'
+		
+	f.source += '#include <cmath>\n\n'
+
+	f += f'namespace {namespace} {{\n\n'
+	
+	for t in ['float', 'double']:
+		T = get_type(t)
+		V = get_type(t, 3)
+		M = get_type(t, (3,3))
+		HM = get_type(t, (3,4))
+	
+		f.function(f'{M}', 'rotate3_X', f'{T} ang', f'''
+			{T} s = std::sin(ang), c = std::cos(ang);
+			return {M}(
+				 1,  0,  0,
+				 0,  c, -s,
+				 0,  s,  c
+			);
+		''')
+		f.function(f'{M}', 'rotate3_Y', f'{T} ang', f'''
+			{T} s = std::sin(ang), c = std::cos(ang);
+			return {M}(
+				 c,  0,  s,
+				 0,  1,  0,
+				-s,  0,  c
+			);
+		''')
+		f.function(f'{M}', 'rotate3_Z', f'{T} ang', f'''
+			{T} s = std::sin(ang), c = std::cos(ang);
+			return {M}(
+				 c, -s,  0,
+				 s,  c,  0,
+				 0,  0,  1
+			);
+		''')
+		f.function(f'{M}', 'scale', f'{V} v', f'''
+			return {M}(
+				v.x,   0,   0,
+				  0, v.y,   0,
+				  0,   0, v.z
+			);
+		''')
+		f.function(f'{HM}', 'translate', f'{V} v', f'''
+			return {HM}(
+				1, 0, 0, v.x,
+				0, 1, 0, v.y,
+				0, 0, 1, v.z
+			);
+		''')
+
+		f += '\n'
+
+	f += '}\n'
 	
 ########## What we want to generate files for to generate
 floats =	[get_type(t) for t in ['float', 'double']]
-ints =		[get_type(t) for t in ['int', 'int64']]
-uints =		[get_type(t) for t in ['uint', 'uint64', 'uint8']]
+ints =		[get_type(t) for t in ['int8', 'int16', 'int', 'int64']]
+uints =		[get_type(t) for t in ['uint8', 'uint16', 'uint', 'uint64']]
 
 scalars = floats + ints + uints
-
-float_const = {'float':'', 'double':'d'} # postfix of Math constants
-
 
 vec_sizes = [2,3,4]
 
 vectors = [
-	[get_type('bool',	s) for s in vec_sizes],
-
-	[get_type('float',	s) for s in vec_sizes],
-	[get_type('double',	s) for s in vec_sizes],
-	[get_type('int',	s) for s in vec_sizes],
-	[get_type('uint',	s) for s in vec_sizes],
-	[get_type('int64',	s) for s in vec_sizes],
-	[get_type('uint8',	s) for s in vec_sizes],
+	[get_type(scalar.name, size) for size in vec_sizes] for scalar in [get_type('bool')] + scalars
 ]
 all_vectors = list(chain.from_iterable(vectors))
 
@@ -877,9 +917,7 @@ all_matricies = list(chain.from_iterable(matricies))
 import os
 
 dir = os.path.join('test_output')
-gen = srcgen.Generator(dir, default_constexpr=True, default_inline=False)
-
-#util(gen.add_file('util'))
+gen = srcgen.Generator(dir, default_constexpr=False, default_inline=False)
 
 for s in scalars:
 	scalar_math(s, gen.add_file(s.name))
@@ -888,10 +926,11 @@ for tvec in vectors:
 	for v in tvec:
 		gen_vector(v, gen.add_file(v.name))
 
-#for tmat in matricies:
-#	for m in tmat:
-#		gen_matrix(m, gen.add_file(m.name))
+for tmat in matricies:
+	for m in tmat:
+		gen_matrix(m, gen.add_file(m.name))
 
-#transformations(gen.add_file('transformations'))
+transform2(gen.add_file('transform2d'))
+transform3(gen.add_file('transform3d'))
 
 gen.write_files('kissmath.py at <TODO: add github link>')
