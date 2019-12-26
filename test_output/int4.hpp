@@ -6,17 +6,17 @@
 namespace kissmath {
 	//// forward declarations
 	
-	struct int64v4;
+	struct uint8v4;
 	struct uint4;
-	struct uint16v4;
+	struct int64v4;
+	struct int8v4;
+	struct float4;
+	struct int2;
 	struct bool4;
+	struct uint16v4;
 	struct uint64v4;
 	struct int16v4;
-	struct uint8v4;
-	struct int8v4;
 	struct double4;
-	struct int2;
-	struct float4;
 	struct int3;
 	
 	struct int4 {

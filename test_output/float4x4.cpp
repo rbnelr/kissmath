@@ -283,85 +283,24 @@ namespace kissmath {
 	
 	// Matrix ops
 	
-}
-
-#include <xmmintrin.h>
-
-namespace kissmath {
-
-	__m128 _matmul_mv (__m128 m0, __m128 m1, __m128 m2, __m128 m3, __m128 v) {
-		__m128 x = _mm_shuffle_ps(v, v, _MM_SHUFFLE(0,0,0,0));
-		__m128 y = _mm_shuffle_ps(v, v, _MM_SHUFFLE(1,1,1,1));
-		__m128 z = _mm_shuffle_ps(v, v, _MM_SHUFFLE(2,2,2,2));
-		__m128 w = _mm_shuffle_ps(v, v, _MM_SHUFFLE(3,3,3,3));
-
-		__m128 res =          _mm_mul_ps(m0, x);
-		res = _mm_add_ps(res, _mm_mul_ps(m1, y));
-		res = _mm_add_ps(res, _mm_mul_ps(m2, z));
-		res = _mm_add_ps(res, _mm_mul_ps(m3, w));
-		return res;
-	}
-	struct _matrix {
-		__m128 c[4];
-	};
-	__forceinline _matrix _matmul_mm (
-			__m128 l0, __m128 l1, __m128 l2, __m128 l3,
-			__m128 r0, __m128 r1, __m128 r2, __m128 r3) {
-		_matrix ret;
-		ret.c[0] = _matmul_mv(l0,l1,l2,l3, r0);
-		ret.c[1] = _matmul_mv(l0,l1,l2,l3, r1);
-		ret.c[2] = _matmul_mv(l0,l1,l2,l3, r2);
-		ret.c[3] = _matmul_mv(l0,l1,l2,l3, r3);
-		return ret;
-	}
-
+	
 	// matrix-matrix multiply
-	__declspec(noinline) float4x4 operator* (float4x4 const& l, float4x4 const& r) {
-		//float4x4 ret;
-		//ret.arr[0] = l * r.arr[0];
-		//ret.arr[1] = l * r.arr[1];
-		//ret.arr[2] = l * r.arr[2];
-		//ret.arr[3] = l * r.arr[3];
-		//return ret;
-
-		__m128 l0 = _mm_load_ps(&l.arr[0].x);
-		__m128 l1 = _mm_load_ps(&l.arr[1].x);
-		__m128 l2 = _mm_load_ps(&l.arr[2].x);
-		__m128 l3 = _mm_load_ps(&l.arr[3].x);
-
-		__m128 r0 = _mm_load_ps(&r.arr[0].x);
-		__m128 r1 = _mm_load_ps(&r.arr[1].x);
-		__m128 r2 = _mm_load_ps(&r.arr[2].x);
-		__m128 r3 = _mm_load_ps(&r.arr[3].x);
-
-		auto retm = _matmul_mm(l0,l1,l2,l3, r0,r1,r2,r3);
-
+	float4x4 operator* (float4x4 const& l, float4x4 const& r) {
 		float4x4 ret;
-		_mm_store_ps(&ret.arr[0].x, retm.c[0]);
-		_mm_store_ps(&ret.arr[1].x, retm.c[1]);
-		_mm_store_ps(&ret.arr[2].x, retm.c[2]);
-		_mm_store_ps(&ret.arr[3].x, retm.c[3]);
+		ret.arr[0] = l * r.arr[0];
+		ret.arr[1] = l * r.arr[1];
+		ret.arr[2] = l * r.arr[2];
+		ret.arr[3] = l * r.arr[3];
 		return ret;
 	}
 	
 	// matrix-vector multiply
 	float4 operator* (float4x4 const& l, float4 r) {
-		//float4 ret;
-		//ret[0] = l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z + l.arr[3].x * r.w;
-		//ret[1] = l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z + l.arr[3].y * r.w;
-		//ret[2] = l.arr[0].z * r.x + l.arr[1].z * r.y + l.arr[2].z * r.z + l.arr[3].z * r.w;
-		//ret[3] = l.arr[0].w * r.x + l.arr[1].w * r.y + l.arr[2].w * r.z + l.arr[3].w * r.w;
-		//return ret;
-
-		__m128 m0 = _mm_load_ps(&l.arr[0].x);
-		__m128 m1 = _mm_load_ps(&l.arr[1].x);
-		__m128 m2 = _mm_load_ps(&l.arr[2].x);
-		__m128 m3 = _mm_load_ps(&l.arr[3].x);
-
-		__m128 v = _mm_load_ps(&r.x);
-
 		float4 ret;
-		_mm_store_ps(&ret.x, _matmul_mv(m0, m1, m2, m3, v));
+		ret[0] = l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z + l.arr[3].x * r.w;
+		ret[1] = l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z + l.arr[3].y * r.w;
+		ret[2] = l.arr[0].z * r.x + l.arr[1].z * r.y + l.arr[2].z * r.z + l.arr[3].z * r.w;
+		ret[3] = l.arr[0].w * r.x + l.arr[1].w * r.y + l.arr[2].w * r.z + l.arr[3].w * r.w;
 		return ret;
 	}
 	
