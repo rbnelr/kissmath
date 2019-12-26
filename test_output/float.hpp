@@ -76,10 +76,18 @@ namespace kissmath {
 	//// Angle conversion
 	
 	// converts degrees to radiants
-	float radians (float deg);
+	float to_radians (float deg);
 	
 	// converts radiants to degrees
-	float degrees (float deg);
+	float to_degrees (float rad);
+	
+	// converts degrees to radiants
+	// shortform to make degree literals more readable
+	float deg (float deg);
+	
+	// converts degrees to radiants
+	// spcial shortform to make degree literals more readable and allow to use integer literals (deg(5) would throw error)
+	float deg (int deg);
 	
 	//// Linear interpolation
 	

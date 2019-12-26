@@ -85,13 +85,25 @@ namespace kissmath {
 	
 	
 	// converts degrees to radiants
-	float radians (float deg) {
+	float to_radians (float deg) {
 		return deg * DEG_TO_RAD;
 	}
 	
 	// converts radiants to degrees
-	float degrees (float deg) {
+	float to_degrees (float rad) {
+		return rad * RAD_TO_DEG;
+	}
+	
+	// converts degrees to radiants
+	// shortform to make degree literals more readable
+	float deg (float deg) {
 		return deg * DEG_TO_RAD;
+	}
+	
+	// converts degrees to radiants
+	// spcial shortform to make degree literals more readable and allow to use integer literals (deg(5) would throw error)
+	float deg (int deg) {
+		return (float)deg * DEG_TO_RAD;
 	}
 	
 	// linear interpolation

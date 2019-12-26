@@ -122,9 +122,13 @@ def generic_math(T, f):
 		csuff = cfloatsuff[str(T.scalar_type)]
 		mysuff = myfloatsuff[str(T.scalar_type)]
 
-		f.function(f'{T}', 'radians',	f'{T} deg', f'return deg * DEG_TO_RAD{mysuff};', comment='converts degrees to radiants')
-		f.function(f'{T}', 'degrees',	f'{T} deg', f'return deg * DEG_TO_RAD{mysuff};', comment='converts radiants to degrees')
+		f.function(f'{T}', 'to_radians',	f'{T} deg', f'return deg * DEG_TO_RAD{mysuff};', comment='converts degrees to radiants')
+		f.function(f'{T}', 'to_degrees',	f'{T} rad', f'return rad * RAD_TO_DEG{mysuff};', comment='converts radiants to degrees')
 		
+		f.function(f'{T}', 'deg',			f'{T} deg', f'return deg * DEG_TO_RAD{mysuff};', comment='converts degrees to radiants\nshortform to make degree literals more readable')
+		if str(T) == 'float':
+			f.function(f'{T}', 'deg',		f'int deg', f'return (float)deg * DEG_TO_RAD{mysuff};', comment='converts degrees to radiants\nspcial shortform to make degree literals more readable and allow to use integer literals (deg(5) would throw error)')
+	
 		f.header += '//// Linear interpolation\n\n'
 
 		f.function(f'{T}', 'lerp',	f'{T} a, {T} b, {T} t',

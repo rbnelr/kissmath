@@ -85,12 +85,18 @@ namespace kissmath {
 	
 	
 	// converts degrees to radiants
-	double radians (double deg) {
+	double to_radians (double deg) {
 		return deg * DEG_TO_RADd;
 	}
 	
 	// converts radiants to degrees
-	double degrees (double deg) {
+	double to_degrees (double rad) {
+		return rad * RAD_TO_DEGd;
+	}
+	
+	// converts degrees to radiants
+	// shortform to make degree literals more readable
+	double deg (double deg) {
 		return deg * DEG_TO_RADd;
 	}
 	

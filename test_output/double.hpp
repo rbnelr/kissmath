@@ -77,10 +77,14 @@ namespace kissmath {
 	//// Angle conversion
 	
 	// converts degrees to radiants
-	double radians (double deg);
+	double to_radians (double deg);
 	
 	// converts radiants to degrees
-	double degrees (double deg);
+	double to_degrees (double rad);
+	
+	// converts degrees to radiants
+	// shortform to make degree literals more readable
+	double deg (double deg);
 	
 	//// Linear interpolation
 	

@@ -6,18 +6,18 @@
 namespace kissmath {
 	//// forward declarations
 	
-	struct float2;
-	struct double3;
-	struct uint16v2;
+	struct int16v2;
+	struct int64v2;
 	struct uint64v2;
+	struct int8v2;
+	struct double3;
+	struct uint2;
+	struct double4;
+	struct uint8v2;
+	struct float2;
 	struct int2;
 	struct bool2;
-	struct int8v2;
-	struct int16v2;
-	struct uint2;
-	struct uint8v2;
-	struct double4;
-	struct int64v2;
+	struct uint16v2;
 	
 	struct double2 {
 		union { // Union with named members and array members to allow vector[] operator, not 100% sure that this is not undefined behavoir, but I think all compilers definitely don't screw up this use case
@@ -202,10 +202,14 @@ namespace kissmath {
 	//// Angle conversion
 	
 	// converts degrees to radiants
-	double2 radians (double2 deg);
+	double2 to_radians (double2 deg);
 	
 	// converts radiants to degrees
-	double2 degrees (double2 deg);
+	double2 to_degrees (double2 rad);
+	
+	// converts degrees to radiants
+	// shortform to make degree literals more readable
+	double2 deg (double2 deg);
 	
 	//// Linear interpolation
 	
