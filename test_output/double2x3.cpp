@@ -245,23 +245,29 @@ namespace kissmath {
 	
 	// matrix-matrix multiply
 	double2x3 operator* (double2x3 const& l, double3x3 const& r) {
-		return double2x3::columns(l * r.arr[0],
-								  l * r.arr[1],
-								  l * r.arr[2]);
+		double2x3 ret;
+		ret.arr[0] = l * r.arr[0];
+		ret.arr[1] = l * r.arr[1];
+		ret.arr[2] = l * r.arr[2];
+		return ret;
 	}
 	// double2x3 * double3x4 -> 2x4 ; matrix not implemented
 	
 	// matrix-vector multiply
 	double2 operator* (double2x3 const& l, double3 r) {
-		return double2(l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z,
-					   l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z);
+		double2 ret;
+		ret[0] = l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z;
+		ret[1] = l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z;
+		return ret;
 	}
 	
 	// vector-matrix multiply
 	double3 operator* (double2 l, double2x3 const& r) {
-		return double3(l.x * r.arr[0].x + l.y * r.arr[0].y,
-					   l.x * r.arr[1].x + l.y * r.arr[1].y,
-					   l.x * r.arr[2].x + l.y * r.arr[2].y);
+		double3 ret;
+		ret[0] = l.x * r.arr[0].x + l.y * r.arr[0].y;
+		ret[1] = l.x * r.arr[1].x + l.y * r.arr[1].y;
+		ret[2] = l.x * r.arr[2].x + l.y * r.arr[2].y;
+		return ret;
 	}
 	
 	// Matrix operation shortforms so that you can treat a 2x3 matrix as a 2x2 matrix plus translation

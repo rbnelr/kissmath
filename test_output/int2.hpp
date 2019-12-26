@@ -6,18 +6,18 @@
 namespace kissmath {
 	//// forward declarations
 	
-	struct uint8v2;
-	struct double2;
+	struct int64v2;
+	struct uint2;
+	struct bool2;
 	struct float2;
 	struct int4;
 	struct int16v2;
-	struct int64v2;
 	struct uint16v2;
-	struct bool2;
-	struct uint2;
-	struct int3;
+	struct double2;
 	struct uint64v2;
 	struct int8v2;
+	struct int3;
+	struct uint8v2;
 	
 	struct int2 {
 		union { // Union with named members and array members to allow vector[] operator, not 100% sure that this is not undefined behavoir, but I think all compilers definitely don't screw up this use case

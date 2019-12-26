@@ -286,26 +286,32 @@ namespace kissmath {
 	
 	// matrix-matrix multiply
 	double4x4 operator* (double4x4 const& l, double4x4 const& r) {
-		return double4x4::columns(l * r.arr[0],
-								  l * r.arr[1],
-								  l * r.arr[2],
-								  l * r.arr[3]);
+		double4x4 ret;
+		ret.arr[0] = l * r.arr[0];
+		ret.arr[1] = l * r.arr[1];
+		ret.arr[2] = l * r.arr[2];
+		ret.arr[3] = l * r.arr[3];
+		return ret;
 	}
 	
 	// matrix-vector multiply
 	double4 operator* (double4x4 const& l, double4 r) {
-		return double4(l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z + l.arr[3].x * r.w,
-					   l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z + l.arr[3].y * r.w,
-					   l.arr[0].z * r.x + l.arr[1].z * r.y + l.arr[2].z * r.z + l.arr[3].z * r.w,
-					   l.arr[0].w * r.x + l.arr[1].w * r.y + l.arr[2].w * r.z + l.arr[3].w * r.w);
+		double4 ret;
+		ret[0] = l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z + l.arr[3].x * r.w;
+		ret[1] = l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z + l.arr[3].y * r.w;
+		ret[2] = l.arr[0].z * r.x + l.arr[1].z * r.y + l.arr[2].z * r.z + l.arr[3].z * r.w;
+		ret[3] = l.arr[0].w * r.x + l.arr[1].w * r.y + l.arr[2].w * r.z + l.arr[3].w * r.w;
+		return ret;
 	}
 	
 	// vector-matrix multiply
 	double4 operator* (double4 l, double4x4 const& r) {
-		return double4(l.x * r.arr[0].x + l.y * r.arr[0].y + l.z * r.arr[0].z + l.w * r.arr[0].w,
-					   l.x * r.arr[1].x + l.y * r.arr[1].y + l.z * r.arr[1].z + l.w * r.arr[1].w,
-					   l.x * r.arr[2].x + l.y * r.arr[2].y + l.z * r.arr[2].z + l.w * r.arr[2].w,
-					   l.x * r.arr[3].x + l.y * r.arr[3].y + l.z * r.arr[3].z + l.w * r.arr[3].w);
+		double4 ret;
+		ret[0] = l.x * r.arr[0].x + l.y * r.arr[0].y + l.z * r.arr[0].z + l.w * r.arr[0].w;
+		ret[1] = l.x * r.arr[1].x + l.y * r.arr[1].y + l.z * r.arr[1].z + l.w * r.arr[1].w;
+		ret[2] = l.x * r.arr[2].x + l.y * r.arr[2].y + l.z * r.arr[2].z + l.w * r.arr[2].w;
+		ret[3] = l.x * r.arr[3].x + l.y * r.arr[3].y + l.z * r.arr[3].z + l.w * r.arr[3].w;
+		return ret;
 	}
 	
 	double4x4 transpose (double4x4 const& m) {
@@ -349,9 +355,6 @@ namespace kissmath {
 				  +c*(+e*(j*p - l*n) -f*(i*p - l*m) +h*(i*n - j*m))
 				  -d*(+e*(j*o - k*n) -f*(i*o - k*m) +g*(i*n - j*m));
 		}
-		double inv_det = double(1) / det;
-		double ninv_det = -inv_det;
-		
 		// calc cofactor matrix
 		
 		double cofac_00 = +f*(k*p - l*o) -g*(j*p - l*n) +h*(j*o - k*n);
@@ -372,6 +375,9 @@ namespace kissmath {
 		double cofac_33 = +a*(f*k - g*j) -b*(e*k - g*i) +c*(e*j - f*i);
 		
 		double4x4 ret;
+		
+		double inv_det = double(1) / det;
+		double ninv_det = -inv_det;
 		
 		ret.arr[0][0] = cofac_00 *  inv_det;
 		ret.arr[0][1] = cofac_10 * ninv_det;

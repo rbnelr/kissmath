@@ -5,21 +5,22 @@ def indent(txt, level):
 def mat_cell_letters(size):
 	return [[chr(ord('a') + r*size + c) for c in range(size)] for r in range(size)]
 
+def letterify(size):
+	cell_letter = mat_cell_letters(size)
+	return lambda r,c: cell_letter[r][c]
+	#return lambda r,c: f'_{r}{c}'
+
 def define_letterify(T, size):
 	define_txt = ['#define LETTERIFY']
-
-	cell_letter = mat_cell_letters(size)
 	
+	cell = letterify(size)
+
 	for r in range(size):
 		for c in range(size):
-			define_txt.append(f'{T} {cell_letter[r][c]} = mat.arr[{r}][{c}];')
+			define_txt.append(f'{T} {cell(r,c)} = mat.arr[{r}][{c}];')
 
 	return ' \\\n'.join(define_txt)
 
-def letterify(size):
-	cell_letter = mat_cell_letters(size)
-	
-	return lambda r,c: cell_letter[r][c]
 
 # optimize away duplicate subexpressions
 # this is what the c++ compiler does when optimizing, i mainly just did this for fun, probably should turn this off
@@ -123,8 +124,6 @@ def gen_inverse_code(M, T, size):
 	det_txt, det_expr = _gen_determinant_code(T, size, cell)
 	txt += det_txt
 	txt += f'det = {det_expr};\n}}\n'
-	txt += f'{T} inv_det = {T}(1) / det;\n'
-	txt += f'{T} ninv_det = -inv_det;\n\n'
 
 	txt += f'// calc cofactor matrix\n\n'
 	
@@ -140,6 +139,9 @@ def gen_inverse_code(M, T, size):
 
 	txt += f'\n{M} ret;\n\n'
 	
+	txt += f'{T} inv_det = {T}(1) / det;\n'
+	txt += f'{T} ninv_det = -inv_det;\n\n'
+
 	for r in range(size):
 		for c in range(size):
 			transp_r, transp_c = c, r

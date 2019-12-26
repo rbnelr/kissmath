@@ -264,31 +264,39 @@ namespace kissmath {
 	
 	// matrix-matrix multiply
 	float3x3 operator* (float3x3 const& l, float3x3 const& r) {
-		return float3x3::columns(l * r.arr[0],
-								 l * r.arr[1],
-								 l * r.arr[2]);
+		float3x3 ret;
+		ret.arr[0] = l * r.arr[0];
+		ret.arr[1] = l * r.arr[1];
+		ret.arr[2] = l * r.arr[2];
+		return ret;
 	}
 	
 	// matrix-matrix multiply
 	float3x4 operator* (float3x3 const& l, float3x4 const& r) {
-		return float3x4::columns(l * r.arr[0],
-								 l * r.arr[1],
-								 l * r.arr[2],
-								 l * r.arr[3]);
+		float3x4 ret;
+		ret.arr[0] = l * r.arr[0];
+		ret.arr[1] = l * r.arr[1];
+		ret.arr[2] = l * r.arr[2];
+		ret.arr[3] = l * r.arr[3];
+		return ret;
 	}
 	
 	// matrix-vector multiply
 	float3 operator* (float3x3 const& l, float3 r) {
-		return float3(l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z,
-					  l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z,
-					  l.arr[0].z * r.x + l.arr[1].z * r.y + l.arr[2].z * r.z);
+		float3 ret;
+		ret[0] = l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z;
+		ret[1] = l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z;
+		ret[2] = l.arr[0].z * r.x + l.arr[1].z * r.y + l.arr[2].z * r.z;
+		return ret;
 	}
 	
 	// vector-matrix multiply
 	float3 operator* (float3 l, float3x3 const& r) {
-		return float3(l.x * r.arr[0].x + l.y * r.arr[0].y + l.z * r.arr[0].z,
-					  l.x * r.arr[1].x + l.y * r.arr[1].y + l.z * r.arr[1].z,
-					  l.x * r.arr[2].x + l.y * r.arr[2].y + l.z * r.arr[2].z);
+		float3 ret;
+		ret[0] = l.x * r.arr[0].x + l.y * r.arr[0].y + l.z * r.arr[0].z;
+		ret[1] = l.x * r.arr[1].x + l.y * r.arr[1].y + l.z * r.arr[1].z;
+		ret[2] = l.x * r.arr[2].x + l.y * r.arr[2].y + l.z * r.arr[2].z;
+		return ret;
 	}
 	
 	float3x3 transpose (float3x3 const& m) {
@@ -319,9 +327,6 @@ namespace kissmath {
 		{ // clac determinate
 			det = +a*(e*i - f*h) -b*(d*i - f*g) +c*(d*h - e*g);
 		}
-		float inv_det = float(1) / det;
-		float ninv_det = -inv_det;
-		
 		// calc cofactor matrix
 		
 		float cofac_00 = e*i - f*h;
@@ -335,6 +340,9 @@ namespace kissmath {
 		float cofac_22 = a*e - b*d;
 		
 		float3x3 ret;
+		
+		float inv_det = float(1) / det;
+		float ninv_det = -inv_det;
 		
 		ret.arr[0][0] = cofac_00 *  inv_det;
 		ret.arr[0][1] = cofac_10 * ninv_det;

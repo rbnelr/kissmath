@@ -264,31 +264,39 @@ namespace kissmath {
 	
 	// matrix-matrix multiply
 	double3x3 operator* (double3x3 const& l, double3x3 const& r) {
-		return double3x3::columns(l * r.arr[0],
-								  l * r.arr[1],
-								  l * r.arr[2]);
+		double3x3 ret;
+		ret.arr[0] = l * r.arr[0];
+		ret.arr[1] = l * r.arr[1];
+		ret.arr[2] = l * r.arr[2];
+		return ret;
 	}
 	
 	// matrix-matrix multiply
 	double3x4 operator* (double3x3 const& l, double3x4 const& r) {
-		return double3x4::columns(l * r.arr[0],
-								  l * r.arr[1],
-								  l * r.arr[2],
-								  l * r.arr[3]);
+		double3x4 ret;
+		ret.arr[0] = l * r.arr[0];
+		ret.arr[1] = l * r.arr[1];
+		ret.arr[2] = l * r.arr[2];
+		ret.arr[3] = l * r.arr[3];
+		return ret;
 	}
 	
 	// matrix-vector multiply
 	double3 operator* (double3x3 const& l, double3 r) {
-		return double3(l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z,
-					   l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z,
-					   l.arr[0].z * r.x + l.arr[1].z * r.y + l.arr[2].z * r.z);
+		double3 ret;
+		ret[0] = l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z;
+		ret[1] = l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z;
+		ret[2] = l.arr[0].z * r.x + l.arr[1].z * r.y + l.arr[2].z * r.z;
+		return ret;
 	}
 	
 	// vector-matrix multiply
 	double3 operator* (double3 l, double3x3 const& r) {
-		return double3(l.x * r.arr[0].x + l.y * r.arr[0].y + l.z * r.arr[0].z,
-					   l.x * r.arr[1].x + l.y * r.arr[1].y + l.z * r.arr[1].z,
-					   l.x * r.arr[2].x + l.y * r.arr[2].y + l.z * r.arr[2].z);
+		double3 ret;
+		ret[0] = l.x * r.arr[0].x + l.y * r.arr[0].y + l.z * r.arr[0].z;
+		ret[1] = l.x * r.arr[1].x + l.y * r.arr[1].y + l.z * r.arr[1].z;
+		ret[2] = l.x * r.arr[2].x + l.y * r.arr[2].y + l.z * r.arr[2].z;
+		return ret;
 	}
 	
 	double3x3 transpose (double3x3 const& m) {
@@ -319,9 +327,6 @@ namespace kissmath {
 		{ // clac determinate
 			det = +a*(e*i - f*h) -b*(d*i - f*g) +c*(d*h - e*g);
 		}
-		double inv_det = double(1) / det;
-		double ninv_det = -inv_det;
-		
 		// calc cofactor matrix
 		
 		double cofac_00 = e*i - f*h;
@@ -335,6 +340,9 @@ namespace kissmath {
 		double cofac_22 = a*e - b*d;
 		
 		double3x3 ret;
+		
+		double inv_det = double(1) / det;
+		double ninv_det = -inv_det;
 		
 		ret.arr[0][0] = cofac_00 *  inv_det;
 		ret.arr[0][1] = cofac_10 * ninv_det;

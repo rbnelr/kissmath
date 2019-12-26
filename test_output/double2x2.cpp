@@ -242,27 +242,35 @@ namespace kissmath {
 	
 	// matrix-matrix multiply
 	double2x2 operator* (double2x2 const& l, double2x2 const& r) {
-		return double2x2::columns(l * r.arr[0],
-								  l * r.arr[1]);
+		double2x2 ret;
+		ret.arr[0] = l * r.arr[0];
+		ret.arr[1] = l * r.arr[1];
+		return ret;
 	}
 	
 	// matrix-matrix multiply
 	double2x3 operator* (double2x2 const& l, double2x3 const& r) {
-		return double2x3::columns(l * r.arr[0],
-								  l * r.arr[1],
-								  l * r.arr[2]);
+		double2x3 ret;
+		ret.arr[0] = l * r.arr[0];
+		ret.arr[1] = l * r.arr[1];
+		ret.arr[2] = l * r.arr[2];
+		return ret;
 	}
 	
 	// matrix-vector multiply
 	double2 operator* (double2x2 const& l, double2 r) {
-		return double2(l.arr[0].x * r.x + l.arr[1].x * r.y,
-					   l.arr[0].y * r.x + l.arr[1].y * r.y);
+		double2 ret;
+		ret[0] = l.arr[0].x * r.x + l.arr[1].x * r.y;
+		ret[1] = l.arr[0].y * r.x + l.arr[1].y * r.y;
+		return ret;
 	}
 	
 	// vector-matrix multiply
 	double2 operator* (double2 l, double2x2 const& r) {
-		return double2(l.x * r.arr[0].x + l.y * r.arr[0].y,
-					   l.x * r.arr[1].x + l.y * r.arr[1].y);
+		double2 ret;
+		ret[0] = l.x * r.arr[0].x + l.y * r.arr[0].y;
+		ret[1] = l.x * r.arr[1].x + l.y * r.arr[1].y;
+		return ret;
 	}
 	
 	double2x2 transpose (double2x2 const& m) {
@@ -288,9 +296,6 @@ namespace kissmath {
 		{ // clac determinate
 			det = a*d - b*c;
 		}
-		double inv_det = double(1) / det;
-		double ninv_det = -inv_det;
-		
 		// calc cofactor matrix
 		
 		double cofac_00 = d;
@@ -299,6 +304,9 @@ namespace kissmath {
 		double cofac_11 = a;
 		
 		double2x2 ret;
+		
+		double inv_det = double(1) / det;
+		double ninv_det = -inv_det;
 		
 		ret.arr[0][0] = cofac_00 *  inv_det;
 		ret.arr[0][1] = cofac_10 * ninv_det;

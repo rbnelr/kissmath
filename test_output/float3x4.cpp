@@ -267,25 +267,31 @@ namespace kissmath {
 	
 	// matrix-matrix multiply
 	float3x4 operator* (float3x4 const& l, float4x4 const& r) {
-		return float3x4::columns(l * r.arr[0],
-								 l * r.arr[1],
-								 l * r.arr[2],
-								 l * r.arr[3]);
+		float3x4 ret;
+		ret.arr[0] = l * r.arr[0];
+		ret.arr[1] = l * r.arr[1];
+		ret.arr[2] = l * r.arr[2];
+		ret.arr[3] = l * r.arr[3];
+		return ret;
 	}
 	
 	// matrix-vector multiply
 	float3 operator* (float3x4 const& l, float4 r) {
-		return float3(l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z + l.arr[3].x * r.w,
-					  l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z + l.arr[3].y * r.w,
-					  l.arr[0].z * r.x + l.arr[1].z * r.y + l.arr[2].z * r.z + l.arr[3].z * r.w);
+		float3 ret;
+		ret[0] = l.arr[0].x * r.x + l.arr[1].x * r.y + l.arr[2].x * r.z + l.arr[3].x * r.w;
+		ret[1] = l.arr[0].y * r.x + l.arr[1].y * r.y + l.arr[2].y * r.z + l.arr[3].y * r.w;
+		ret[2] = l.arr[0].z * r.x + l.arr[1].z * r.y + l.arr[2].z * r.z + l.arr[3].z * r.w;
+		return ret;
 	}
 	
 	// vector-matrix multiply
 	float4 operator* (float3 l, float3x4 const& r) {
-		return float4(l.x * r.arr[0].x + l.y * r.arr[0].y + l.z * r.arr[0].z,
-					  l.x * r.arr[1].x + l.y * r.arr[1].y + l.z * r.arr[1].z,
-					  l.x * r.arr[2].x + l.y * r.arr[2].y + l.z * r.arr[2].z,
-					  l.x * r.arr[3].x + l.y * r.arr[3].y + l.z * r.arr[3].z);
+		float4 ret;
+		ret[0] = l.x * r.arr[0].x + l.y * r.arr[0].y + l.z * r.arr[0].z;
+		ret[1] = l.x * r.arr[1].x + l.y * r.arr[1].y + l.z * r.arr[1].z;
+		ret[2] = l.x * r.arr[2].x + l.y * r.arr[2].y + l.z * r.arr[2].z;
+		ret[3] = l.x * r.arr[3].x + l.y * r.arr[3].y + l.z * r.arr[3].z;
+		return ret;
 	}
 	
 	// Matrix operation shortforms so that you can treat a 3x4 matrix as a 3x3 matrix plus translation

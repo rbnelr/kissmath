@@ -721,17 +721,17 @@ def gen_matrix(M, f):
 
 			ret = get_type(T, (size[0], m.size[1])).name
 			args = f'{M} {mpass} l, {m} {mpass} r'
-			body = f'return {ret}::columns(%s);' % ',\n'.join(f'l * r.arr[{c}]' for c in range(m.size[1]))
+			body = f'{ret} ret;\n%s\nreturn ret;' % '\n'.join(f'ret.arr[{c}] = l * r.arr[{c}];' for c in range(m.size[1]))
 			comment='matrix-matrix multiply'
 		elif op == 'mv':
 			ret = f'{V}'
 			args = f'{M} {mpass} l, {RV} r'
-			body = f'return {V}(%s);' % ',\n'.join(' + '.join(f'l.arr[{c}].{dims[r]} * r.{dims[c]}' for c in range(size[1])) for r in range(size[0]))
+			body = f'{V} ret;\n%s\nreturn ret;' % '\n'.join(f'ret[{r}] = %s;' % ' + '.join(f'l.arr[{c}].{dims[r]} * r.{dims[c]}' for c in range(size[1])) for r in range(size[0]))
 			comment='matrix-vector multiply'
 		elif op == 'vm':
 			ret = f'{RV}'
 			args = f'{V} l, {M} {mpass} r'
-			body = f'return {RV}(%s);' % ',\n'.join(' + '.join(f'l.{dims[r]} * r.arr[{c}].{dims[r]}' for r in range(size[0])) for c in range(size[1]))
+			body = f'{RV} ret;\n%s\nreturn ret;' % '\n'.join(f'ret[{c}] = %s;' % ' + '.join(f'l.{dims[r]} * r.arr[{c}].{dims[r]}' for r in range(size[0])) for c in range(size[1]))
 			comment='vector-matrix multiply'
 		f.function(ret, 'operator*', args, body, comment=comment)
 	def matmul_shortform(op, r):
