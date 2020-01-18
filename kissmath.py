@@ -16,10 +16,24 @@ class type_:
 		self.stdint_type = None
 	def __repr__(self): return f'type_<{self.name}>'
 	def __str__(self): return self.name
+	
+	def kind(self):
+		if self.size == 1:						return 'scalar'
+		elif not isinstance(self.size, tuple):	return 'vector'
+		else:									return 'matrix'
+	def get_deps(self):
+		k = self.kind()
+		if k == 'scalar':
+			return []
+		elif k == 'vector':
+			return [self.scalar_type]
+		elif k == 'matrix':
+			return list(set([self.scalar_type, get_type(self.scalar_type, self.size[0]), get_type(self.scalar_type, self.size[1])]))
 
 #Note: assuming int is 32 bit for simplicity
 
 _types = {}
+_types_by_name = {}
 def get_type(scalar_type, size=1):
 	if not scalar_type: return None
 
@@ -92,6 +106,7 @@ def get_type(scalar_type, size=1):
 		
 	t = type_()
 	_types[id] = t
+	_types_by_name[name] = t
 
 	t.name = name
 	t.size = size
@@ -361,10 +376,10 @@ def gen_vector(V, f):
 		f.method(f'{V}', '', f'operator {to_type}', '', body, const=True, explicit=True, comment=comment)
 
 	# types references by this type
-	other_size_vecs = [v for v in all_vectors if v.size != size and v.scalar_type == T]
-	other_type_vecs = [v for v in all_vectors if v.size == size and v.scalar_type != T]
+	other_size_vecs = [v for v in vectors if v.size != size and v.scalar_type == T and v in vectors]
+	other_type_vecs = [v for v in vectors if v.size == size and v.scalar_type != T and v in vectors]
 
-	forward_decl_vecs = set(other_size_vecs +[BV]+ other_type_vecs)
+	forward_decl_vecs = set(other_size_vecs +([BV] if BV in vectors else [])+ other_type_vecs)
 	
 	if str(T.scalar_type) != 'bool':
 		f.header += f'#include "{T.scalar_type}.hpp"\n\n'
@@ -417,16 +432,18 @@ def gen_vector(V, f):
 		U = get_type(T, vsz)
 		u = ''.join(dims[:vsz])
 
-		f.constructor(f'{V}', comment='extend vector',
-					 args=', '.join([f'{U} {u}'] + [f'{T} {d}' for d in dims[vsz:]]),
-					 init_list=', '.join([f'{d}{{{u}.{d}}}' for d in dims[:vsz]] + [f'{d}{{{d}}}' for d in dims[vsz:]]))
+		if U in vectors:
+			f.constructor(f'{V}', comment='extend vector',
+						 args=', '.join([f'{U} {u}'] + [f'{T} {d}' for d in dims[vsz:]]),
+						 init_list=', '.join([f'{d}{{{u}.{d}}}' for d in dims[:vsz]] + [f'{d}{{{d}}}' for d in dims[vsz:]]))
 
 	for vsz in range(size+1,vec_sizes[-1]+1):
 		U = get_type(T, vsz)
-
-		f.constructor(f'{V}', comment='truncate vector',
-					 args=f'{U} v',
-					 init_list=', '.join(f'{d}{{v.{d}}}' for d in dims[:size]))
+		
+		if U in vectors:
+			f.constructor(f'{V}', comment='truncate vector',
+						 args=f'{U} v',
+						 init_list=', '.join(f'{d}{{v.{d}}}' for d in dims[:size]))
 		
 	f += '\n//// Truncating cast operators\n\n'
 	
@@ -434,17 +451,20 @@ def gen_vector(V, f):
 		U = get_type(T, vsz)
 		vdims = dims[:vsz]
 		
-		f.method(f'{V}', '', f'operator {U}', '', f'return {U}(%s);' % ', '.join(vdims), const=True, explicit=True, comment="truncating cast operator")
+		if U in vectors:
+			f.method(f'{V}', '', f'operator {U}', '', f'return {U}(%s);' % ', '.join(vdims), const=True, explicit=True, comment="truncating cast operator")
 		
 	f += '\n//// Type cast operators\n\n'
 	for to_vec in other_type_vecs:
-		casting_op(to_vec, "type cast operator")
+		if to_vec in vectors:
+			casting_op(to_vec, "type cast operator")
 			
 	if str(T) != 'bool':
-		f += '\n'
+		if BV in vectors:
+			f += '\n'
 
-		for op in ('+', '-', '*', '/'):
-			compound_binary_op(op, "componentwise arithmetic operator")
+			for op in ('+', '-', '*', '/'):
+				compound_binary_op(op, "componentwise arithmetic operator")
 		
 
 	f.header += '};\n'
@@ -481,18 +501,20 @@ def gen_vector(V, f):
 			binary_op('|')
 			binary_op('^')
 		
-		f += '\n//// comparison ops\n\n'
-		comparison_op('<', comment="componentwise comparison returns a bool vector")
-		comparison_op('<=', comment="componentwise comparison returns a bool vector")
-		comparison_op('>', comment="componentwise comparison returns a bool vector")
-		comparison_op('>=', comment="componentwise comparison returns a bool vector")
-
-	comparison_op('==', comment="componentwise comparison returns a bool vector")
-	comparison_op('!=', comment="componentwise comparison returns a bool vector")
-	f.function(f'bool', 'equal', f'{V} l, {V} r', 'return all(l == r);', comment='vectors are equal, equivalent to all(l == r)')
+		if BV in vectors:
+			f += '\n//// comparison ops\n\n'
+			comparison_op('<', comment="componentwise comparison returns a bool vector")
+			comparison_op('<=', comment="componentwise comparison returns a bool vector")
+			comparison_op('>', comment="componentwise comparison returns a bool vector")
+			comparison_op('>=', comment="componentwise comparison returns a bool vector")
+			
+	if BV in vectors:
+		comparison_op('==', comment="componentwise comparison returns a bool vector")
+		comparison_op('!=', comment="componentwise comparison returns a bool vector")
+		f.function(f'bool', 'equal', f'{V} l, {V} r', 'return all(l == r);', comment='vectors are equal, equivalent to all(l == r)')
 	
-	f.function(f'{V}', 'select', f'{BV} c, {V} l, {V} r', f'return {V}(%s);' % ', '.join(f'c.{d} ? l.{d} : r.{d}' for d in dims),
-		comment='componentwise ternary (c ? l : r)')
+		f.function(f'{V}', 'select', f'{BV} c, {V} l, {V} r', f'return {V}(%s);' % ', '.join(f'c.{d} ? l.{d} : r.{d}' for d in dims),
+			comment='componentwise ternary (c ? l : r)')
 	
 	if str(T) != 'bool':
 		f += '\n//// misc ops\n'
@@ -530,10 +552,11 @@ def gen_vector(V, f):
 			unary_func('floor', comment="componentwise floor")
 			unary_func('ceil', comment="componentwise ceil")
 			unary_func('round', comment="componentwise round")
-
-			unary_func('floori', ret=IV, comment="componentwise floor to int")
-			unary_func('ceili', ret=IV, comment="componentwise ceil to int")
-			unary_func('roundi', ret=IV, comment="componentwise round to int")
+			
+			if IV in vectors:
+				unary_func('floori', ret=IV, comment="componentwise floor to int")
+				unary_func('ceili', ret=IV, comment="componentwise ceil to int")
+				unary_func('roundi', ret=IV, comment="componentwise round to int")
 
 			nary_func('pow', ('v','e'), comment="componentwise pow")
 
@@ -547,17 +570,23 @@ def gen_vector(V, f):
 		f += '\n//// Vector math\n\n'
 		
 		if T not in uints:
-			f.function(f'{FT}', 'length', f'{V} v',				f'return sqrt(({FT})(%s));' % ' + '.join(f'v.{d} * v.{d}' for d in dims), comment='magnitude of vector')
+			if FT in scalars:
+				f.function(f'{FT}', 'length', f'{V} v',				f'return sqrt(({FT})(%s));' % ' + '.join(f'v.{d} * v.{d}' for d in dims), comment='magnitude of vector')
+			
 			f.function(f'{T}', 'length_sqr', f'{V} v',			f'return %s;' % ' + '.join(f'v.{d} * v.{d}' for d in dims), comment='squared magnitude of vector, cheaper than length() because it avoids the sqrt(), some algorithms only need the squared magnitude')
-			f.function(f'{FT}', 'distance', f'{V} a, {V} b',	f'return length(a - b);', comment='distance between points, equivalent to length(a - b)')
-			f.function(f'{FV}', 'normalize', f'{V} v',			f'return {FV}(v) / length(v);', comment='normalize vector so that it has length() = 1, undefined for zero vector')
-			f.function(f'{FV}', 'normalizesafe', f'{V} v', f'''
-				{FT} len = length(v);
-				if (len == {FT}(0)) {{
-					return {FT}(0);
-				}}
-				return {FV}(v) / {FV}(len);
-			''', comment='normalize vector so that it has length() = 1, returns zero vector if vector was zero vector')
+			
+			if FT in scalars:
+				f.function(f'{FT}', 'distance', f'{V} a, {V} b',	f'return length(a - b);', comment='distance between points, equivalent to length(a - b)')
+			if FV in vectors:
+				f.function(f'{FV}', 'normalize', f'{V} v',			f'return {FV}(v) / length(v);', comment='normalize vector so that it has length() = 1, undefined for zero vector')
+			if FV in vectors:
+				f.function(f'{FV}', 'normalizesafe', f'{V} v', f'''
+					{FT} len = length(v);
+					if (len == {FT}(0)) {{
+						return {FT}(0);
+					}}
+					return {FV}(v) / {FV}(len);
+				''', comment='normalize vector so that it has length() = 1, returns zero vector if vector was zero vector')
 		
 			f.function(f'{T}', 'dot', f'{V} l, {V} r', f'return %s;' % ' + '.join(f'l.{d} * r.{d}' for d in dims), comment='dot product')
 		
@@ -594,8 +623,8 @@ def gen_matrix(M, f):
 	V = get_type(T, size[0]).name # column vectors
 	RV = get_type(T, size[1]).name # row vectors
 
-	other_size_mats = [m for m in all_matricies if m.size[0] != size[0] or m.size[1] != size[1] if m.scalar_type == T]
-	other_type_mats = [m for m in all_matricies if m.size[0] == size[0] and m.size[1] == size[1] if m.scalar_type != T]
+	other_size_mats = [m for m in matricies if m.size[0] != size[0] or m.size[1] != size[1] if m.scalar_type == T]
+	other_type_mats = [m for m in matricies if m.size[0] == size[0] and m.size[1] == size[1] if m.scalar_type != T]
 
 	forward_decl_vecs = [m.name for m in other_size_mats] + [m.name for m in other_type_mats]
 	
@@ -714,60 +743,75 @@ def gen_matrix(M, f):
 	f += '\n// Matrix ops\n\n'
 
 	dims = ['x', 'y', 'z', 'w']
-	def matmul(op, m=None):
+	def _mm(l, r):
+		nonlocal f
+		if not type_exist(T, (l.size[0], r.size[1])):
+			f += f'// {l} * {r} -> {l.size[0]}x{r.size[1]} ; matrix not implemented\n'
+			return
+
+		ret = get_type(T, (l.size[0], r.size[1])).name
+		args = f'{l} {mpass} l, {r} {mpass} r'
+		body = f'{ret} ret;\n%s\nreturn ret;' % '\n'.join(f'ret.arr[{c}] = l * r.arr[{c}];' for c in range(r.size[1]))
+		comment='matrix-matrix multiply'
+		f.function(ret, 'operator*', args, body, comment=comment)
+	def matmul(op):
 		nonlocal f
 		if op == 'mm':
-			if M.scalar_type != m.scalar_type or size[1] != m.size[0]:
-				return
-			if not type_exist(T, (size[0], m.size[1])):
-				f += f'// {M} * {m} -> {size[0]}x{m.size[1]} ; matrix not implemented\n'
-				return
+			if size[0] == size[1]:
+				_mm(M, M) # square matricies just implement their own multiplications
+			elif size[0] == size[1]-1:
+				L = get_type(T, (size[0], size[0]))
+				R = get_type(T, (size[1], size[1]))
 
-			ret = get_type(T, (size[0], m.size[1])).name
-			args = f'{M} {mpass} l, {m} {mpass} r'
-			body = f'{ret} ret;\n%s\nreturn ret;' % '\n'.join(f'ret.arr[{c}] = l * r.arr[{c}];' for c in range(m.size[1]))
-			comment='matrix-matrix multiply'
+				# 3x4 implements 3x3 * 3x4 and 3x4 * 4x4
+				if L in matricies: _mm(L, M)
+				if R in matricies: _mm(M, R)
+						
 		elif op == 'mv':
 			ret = f'{V}'
 			args = f'{M} {mpass} l, {RV} r'
 			body = f'{V} ret;\n%s\nreturn ret;' % '\n'.join(f'ret[{r}] = %s;' % ' + '.join(f'l.arr[{c}].{dims[r]} * r.{dims[c]}' for c in range(size[1])) for r in range(size[0]))
 			comment='matrix-vector multiply'
+			f.function(ret, 'operator*', args, body, comment=comment)
 		elif op == 'vm':
 			ret = f'{RV}'
 			args = f'{V} l, {M} {mpass} r'
 			body = f'{RV} ret;\n%s\nreturn ret;' % '\n'.join(f'ret[{c}] = %s;' % ' + '.join(f'l.{dims[r]} * r.arr[{c}].{dims[r]}' for r in range(size[0])) for c in range(size[1]))
 			comment='vector-matrix multiply'
-		f.function(ret, 'operator*', args, body, comment=comment)
+			f.function(ret, 'operator*', args, body, comment=comment)
 	def matmul_shortform(op, r):
 		nonlocal f
 		if r == None:
 			return
 		if op == 'mm':
 			sqr = get_type(T, (size[1],size[1]))
-		
-			f.function(f'{M}', 'operator*', f'{M} {mpass} l, {r} {mpass} r', f'''
-				return l * ({sqr})r;
-			''', comment=f'shortform for {M} * ({sqr}){r}')
+			
+			if sqr in matricies:
+				f.function(f'{M}', 'operator*', f'{M} {mpass} l, {r} {mpass} r', f'''
+					return l * ({sqr})r;
+				''', comment=f'shortform for {M} * ({sqr}){r}')
 		elif op == 'mv':
 			v = get_type(T, size[1])
 		
-			f.function(f'{r}', 'operator*', f'{M} {mpass} l, {r} r', f'''
-				return l * {v}(r, 1);
-			''', comment=f'shortform for {M} * {v}({r}, 1)')
-			
-
-	for m in all_matricies:
-		matmul('mm', m)
+			if v in vectors:
+				f.function(f'{r}', 'operator*', f'{M} {mpass} l, {r} r', f'''
+					return l * {v}(r, 1);
+				''', comment=f'shortform for {M} * {v}({r}, 1)')
+	
+	matmul('mm')
 	matmul('mv')
 	matmul('vm')
 	
 	if size[0] == size[1]-1:
 		f += f'\n// Matrix operation shortforms so that you can treat a {size[0]}x{size[0]+1} matrix as a {size[0]}x{size[0]} matrix plus translation\n\n'
 
-		matmul_shortform('mm', get_type(T, (size[0],size[0])))
-		matmul_shortform('mm', get_type(T, size))
+		QM = get_type(T, (size[0],size[0]))
+		if QM in matricies:
+			matmul_shortform('mm', QM)
 
-		matmul_shortform('mv', get_type(T, size[0]))
+		matmul_shortform('mm', M)
+
+		matmul_shortform('mv', V)
 
 	if type_exist(T, (size[1], size[0])):
 		m = get_type(T, (size[1], size[0]))
@@ -787,15 +831,24 @@ def gen_matrix(M, f):
 
 	f += '}\n'
 
-def transform2(f):
+def transform2():
+	fM = get_type('float', (2,2))
+	fHM = get_type('float', (2,3))
+	dM = get_type('double', (2,2))
+	dHM = get_type('double', (2,3))
+	if fM not in matricies and fHM not in matricies and dM not in matricies and dHM not in matricies:
+		return
+
+	f = gen.add_file('transform2d')
+
 	for t in ['float', 'double']:
 		V = get_type(t, 2)
 		M = get_type(t, (2,2))
 		HM = get_type(t, (2,3))
 		
-		f.header += f'#include "{V}.hpp"\n'
-		f.header += f'#include "{M}.hpp"\n'
-		f.header += f'#include "{HM}.hpp"\n\n'
+		if V in vectors:    f.header += f'#include "{V}.hpp"\n'
+		if M in matricies:  f.header += f'#include "{M}.hpp"\n'
+		if HM in matricies: f.header += f'#include "{HM}.hpp"\n\n'
 		
 	f.source += '#include <cmath>\n\n'
 	
@@ -807,39 +860,50 @@ def transform2(f):
 		M = get_type(t, (2,2))
 		HM = get_type(t, (2,3))
 
-		f.function(f'{M}', 'rotate2', f'{T} ang', f'''
-			{T} s = std::sin(ang), c = std::cos(ang);
-			return {M}(
-				 c, -s,
-				 s,  c
-			);
-		''')
-		f.function(f'{M}', 'scale', f'{V} v', f'''
-			return {M}(
-				v.x,   0,
-				  0, v.y
-			);
-		''')
-		f.function(f'{HM}', 'translate', f'{V} v', f'''
-			return {HM}(
-				1, 0, v.x,
-				0, 1, v.y
-			);
-		''')
+		if M in matricies:
+			f.function(f'{M}', 'rotate2', f'{T} ang', f'''
+				{T} s = std::sin(ang), c = std::cos(ang);
+				return {M}(
+					 c, -s,
+					 s,  c
+				);
+			''')
+			f.function(f'{M}', 'scale', f'{V} v', f'''
+				return {M}(
+					v.x,   0,
+					  0, v.y
+				);
+			''')
+		if HM in matricies:
+			f.function(f'{HM}', 'translate', f'{V} v', f'''
+				return {HM}(
+					1, 0, v.x,
+					0, 1, v.y
+				);
+			''')
 
 		f += '\n'
 
 	f += '}\n'
 	
-def transform3(f):
+def transform3():
+	fM = get_type('float', (3,3))
+	fHM = get_type('float', (3,4))
+	dM = get_type('double', (3,3))
+	dHM = get_type('double', (3,4))
+	if fM not in matricies and fHM not in matricies and dM not in matricies and dHM not in matricies:
+		return
+	
+	f = gen.add_file('transform3d')
+
 	for t in ['float', 'double']:
 		V = get_type(t, 3)
 		M = get_type(t, (3,3))
 		HM = get_type(t, (3,4))
 		
-		f.header += f'#include "{V}.hpp"\n'
-		f.header += f'#include "{M}.hpp"\n'
-		f.header += f'#include "{HM}.hpp"\n\n'
+		if V in vectors:    f.header += f'#include "{V}.hpp"\n'
+		if M in matricies:  f.header += f'#include "{M}.hpp"\n'
+		if HM in matricies: f.header += f'#include "{HM}.hpp"\n\n'
 		
 	f.source += '#include <cmath>\n\n'
 
@@ -851,50 +915,52 @@ def transform3(f):
 		M = get_type(t, (3,3))
 		HM = get_type(t, (3,4))
 	
-		f.function(f'{M}', 'rotate3_X', f'{T} ang', f'''
-			{T} s = std::sin(ang), c = std::cos(ang);
-			return {M}(
-				 1,  0,  0,
-				 0,  c, -s,
-				 0,  s,  c
-			);
-		''')
-		f.function(f'{M}', 'rotate3_Y', f'{T} ang', f'''
-			{T} s = std::sin(ang), c = std::cos(ang);
-			return {M}(
-				 c,  0,  s,
-				 0,  1,  0,
-				-s,  0,  c
-			);
-		''')
-		f.function(f'{M}', 'rotate3_Z', f'{T} ang', f'''
-			{T} s = std::sin(ang), c = std::cos(ang);
-			return {M}(
-				 c, -s,  0,
-				 s,  c,  0,
-				 0,  0,  1
-			);
-		''')
-		f.function(f'{M}', 'scale', f'{V} v', f'''
-			return {M}(
-				v.x,   0,   0,
-				  0, v.y,   0,
-				  0,   0, v.z
-			);
-		''')
-		f.function(f'{HM}', 'translate', f'{V} v', f'''
-			return {HM}(
-				1, 0, 0, v.x,
-				0, 1, 0, v.y,
-				0, 0, 1, v.z
-			);
-		''')
+		if M in matricies: 
+			f.function(f'{M}', 'rotate3_X', f'{T} ang', f'''
+				{T} s = std::sin(ang), c = std::cos(ang);
+				return {M}(
+					 1,  0,  0,
+					 0,  c, -s,
+					 0,  s,  c
+				);
+			''')
+			f.function(f'{M}', 'rotate3_Y', f'{T} ang', f'''
+				{T} s = std::sin(ang), c = std::cos(ang);
+				return {M}(
+					 c,  0,  s,
+					 0,  1,  0,
+					-s,  0,  c
+				);
+			''')
+			f.function(f'{M}', 'rotate3_Z', f'{T} ang', f'''
+				{T} s = std::sin(ang), c = std::cos(ang);
+				return {M}(
+					 c, -s,  0,
+					 s,  c,  0,
+					 0,  0,  1
+				);
+			''')
+			f.function(f'{M}', 'scale', f'{V} v', f'''
+				return {M}(
+					v.x,   0,   0,
+					  0, v.y,   0,
+					  0,   0, v.z
+				);
+			''')
+		if HM in matricies:  
+			f.function(f'{HM}', 'translate', f'{V} v', f'''
+				return {HM}(
+					1, 0, 0, v.x,
+					0, 1, 0, v.y,
+					0, 0, 1, v.z
+				);
+			''')
 
 		f += '\n'
 
 	f += '}\n'
 	
-########## What we want to generate files for to generate
+########## What we want to generate
 floats =	[get_type(t) for t in ['float', 'double']]
 ints =		[get_type(t) for t in ['int8', 'int16', 'int', 'int64']]
 uints =		[get_type(t) for t in ['uint8', 'uint16', 'uint', 'uint64']]
@@ -906,35 +972,51 @@ vec_sizes = [2,3,4]
 vectors = [
 	[get_type(scalar.name, size) for size in vec_sizes] for scalar in [get_type('bool')] + scalars
 ]
-all_vectors = list(chain.from_iterable(vectors))
+vectors = list(chain.from_iterable(vectors))
 
 mat_sizes = [(2,2), (3,3), (4,4), (2,3), (3,4)]
-
 
 matricies = [
 	[ get_type('float', s) for s in mat_sizes ],
 	[ get_type('double', s) for s in mat_sizes ],
 ]
-all_matricies = list(chain.from_iterable(matricies))
+matricies = list(chain.from_iterable(matricies))
+
+all_types = scalars + vectors + matricies
+
+####
+output_types = all_types
+
+import sys
+if len(sys.argv) > 1:
+	output_types = [_types_by_name[t] for t in sys.argv[1:]]
+	
+	deps = [t.get_deps() for t in output_types]
+	deps = list(chain.from_iterable(deps))
+	output_types = output_types + deps
+	
+	output_types = list(set(output_types))
+	
+	scalars   = [t for t in output_types if t.kind() == 'scalar']
+	vectors   = [t for t in output_types if t.kind() == 'vector']
+	matricies = [t for t in output_types if t.kind() == 'matrix']
 
 ########## Generate all files
 import os
 
-dir = os.path.join('test_output')
+dir = os.path.join('output')
 gen = srcgen.Generator(dir, default_constexpr=False, default_inline=False)
 
 for s in scalars:
 	scalar_math(s, gen.add_file(s.name))
 
-for tvec in vectors:
-	for v in tvec:
-		gen_vector(v, gen.add_file(v.name))
+for v in vectors:
+	gen_vector(v, gen.add_file(v.name))
 
-for tmat in matricies:
-	for m in tmat:
-		gen_matrix(m, gen.add_file(m.name))
+for m in matricies:
+	gen_matrix(m, gen.add_file(m.name))
 
-transform2(gen.add_file('transform2d'))
-transform3(gen.add_file('transform3d'))
+transform2()
+transform3()
 
 gen.write_files('kissmath.py at <TODO: add github link>')
