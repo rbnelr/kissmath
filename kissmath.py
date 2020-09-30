@@ -232,6 +232,19 @@ def scalar_math(T, f):
 			return modulo + a;
 		''', comment='wrap x into [a,b) range')
 		
+		#min_func = 'std::fmin(l,r)' if T in floats else f'l <= r ? l : r'
+		#max_func = 'std::fmax(l,r)' if T in floats else f'l >= r ? l : r'
+		min_func = f'l <= r ? l : r'
+		max_func = f'l >= r ? l : r'
+	
+		f.function(f'{T}', 'min',		f'{T} l, {T} r',			f'return {min_func};',
+				comment='returns the greater value of a and b')
+		f.function(f'{T}', 'max',		f'{T} l, {T} r',			f'return {max_func};',
+				comment='returns the smaller value of a and b')
+
+		f.function(f'{T}', 'select',	f'{BT} c, {T} l, {T} r',	f'return c ? l : r;',
+				comment='equivalent to ternary c ? l : r\nfor conformity with vectors')
+		
 		f.function(f'{T}', 'clamp',		f'{T} x, {T} a, {T} b',		f'return min(max(x, a), b);',
 				comment='clamp x into range [a, b]\nequivalent to min(max(x,a), b)')
 		f.function(f'{T}', 'clamp',		f'{T} x',					f'return min(max(x, {T}(0)), {T}(1));',
@@ -289,19 +302,7 @@ def scalar_math(T, f):
 			
 			f += '\n'
 
-		#min_func = 'std::fmin(l,r)' if T in floats else f'l <= r ? l : r'
-		#max_func = 'std::fmax(l,r)' if T in floats else f'l >= r ? l : r'
-		min_func = f'l <= r ? l : r'
-		max_func = f'l >= r ? l : r'
-	
-		f.function(f'{T}', 'min',		f'{T} l, {T} r',			f'return {min_func};',
-				comment='returns the greater value of a and b')
-		f.function(f'{T}', 'max',		f'{T} l, {T} r',			f'return {max_func};',
-				comment='returns the smaller value of a and b')
-
-		f.function(f'{T}', 'select',	f'{BT} c, {T} l, {T} r',	f'return c ? l : r;',
-				comment='equivalent to ternary c ? l : r\nfor conformity with vectors')
-
+		
 		generic_math(T, f)
 
 		f += '\n'
@@ -391,6 +392,17 @@ def gen_vector(V, f):
 		f.header += f'struct {v};\n'
 	
 	#
+	f.inlined += ''.join(f'#include "{n}.hpp"\n' for n in forward_decl_vecs)
+
+	f.inlined += f'\nnamespace {namespace} {{\n'
+	
+	f.inlined += '//// forward declarations\n// typedef these because the _t suffix is kinda unwieldy when using these types often\n\n'
+
+	for v in forward_decl_vecs:
+		if v.scalar_type.stdint_type:
+			f.inlined += f'typedef {v.scalar_type.stdint_type} {v.scalar_type};\n'
+
+	#
 	f.source += ''.join(f'#include "{n}.hpp"\n' for n in forward_decl_vecs)
 
 	f.source += f'\nnamespace {namespace} {{\n'
@@ -400,6 +412,7 @@ def gen_vector(V, f):
 	for v in forward_decl_vecs:
 		if v.scalar_type.stdint_type:
 			f.source += f'typedef {v.scalar_type.stdint_type} {v.scalar_type};\n'
+
 	
 	f.header += f'''
 		struct {V} {{
@@ -418,8 +431,7 @@ def gen_vector(V, f):
 
 	f += '\n'
 	
-	f.constructor(f'{V}', args='',
-			   comment='uninitialized constructor')
+	f.constructor(f'{V}', args='', comment='uninitialized constructor', defaulted=True)
 	f.constructor(f'{V}', args=f'{T} all',						init_list=', '.join(f'{d}{{all}}' for d in dims),
 		comment=
 		'''sets all components to one value
@@ -500,6 +512,8 @@ def gen_vector(V, f):
 			binary_op('&')
 			binary_op('|')
 			binary_op('^')
+			binary_op('<<')
+			binary_op('>>')
 		
 		if BV in vectors:
 			f += '\n//// comparison ops\n\n'
@@ -637,6 +651,10 @@ def gen_matrix(M, f):
 	f.header += ''.join(f'struct {n};\n' for n in forward_decl_vecs)
 
 	#
+	f.inlined += ''.join(f'#include "{n}.hpp"\n' for n in forward_decl_vecs)
+
+	f.inlined += f'\nnamespace {namespace} {{\n\n'
+
 	f.source += ''.join(f'#include "{n}.hpp"\n' for n in forward_decl_vecs)
 
 	f.source += f'\nnamespace {namespace} {{\n\n'
@@ -670,7 +688,7 @@ def gen_matrix(M, f):
 		const=True, comment='get matrix row')
 	
 	f += '\n//// Constructors\n\n'
-	f.constructor(f'{M}', '', comment='uninitialized constructor')
+	f.constructor(f'{M}', '', comment='uninitialized constructor', defaulted=True)
 
 	f.constructor(f'{M}', args=f'{T} all',						explicit=True, init_list='\narr{%s}' % col_vec_cells('all'),		comment='supply one value for all cells')
 	f.constructor(f'{M}', args=row_major(str(T) +' c{r}{c}'),	explicit=True, init_list='\narr{%s}' % col_vec_cells('c{r}{c}'),	comment='supply all cells, in row major order for readability -> c<row><column>')
@@ -753,7 +771,7 @@ def gen_matrix(M, f):
 		args = f'{l} {mpass} l, {r} {mpass} r'
 		body = f'{ret} ret;\n%s\nreturn ret;' % '\n'.join(f'ret.arr[{c}] = l * r.arr[{c}];' for c in range(r.size[1]))
 		comment='matrix-matrix multiply'
-		f.function(ret, 'operator*', args, body, comment=comment)
+		f.function(ret, 'operator*', args, body, comment=comment, constexpr=False)
 	def matmul(op):
 		nonlocal f
 		if op == 'mm':
@@ -772,13 +790,13 @@ def gen_matrix(M, f):
 			args = f'{M} {mpass} l, {RV} r'
 			body = f'{V} ret;\n%s\nreturn ret;' % '\n'.join(f'ret[{r}] = %s;' % ' + '.join(f'l.arr[{c}].{dims[r]} * r.{dims[c]}' for c in range(size[1])) for r in range(size[0]))
 			comment='matrix-vector multiply'
-			f.function(ret, 'operator*', args, body, comment=comment)
+			f.function(ret, 'operator*', args, body, comment=comment, constexpr=False)
 		elif op == 'vm':
 			ret = f'{RV}'
 			args = f'{V} l, {M} {mpass} r'
 			body = f'{RV} ret;\n%s\nreturn ret;' % '\n'.join(f'ret[{c}] = %s;' % ' + '.join(f'l.{dims[r]} * r.arr[{c}].{dims[r]}' for r in range(size[0])) for c in range(size[1]))
 			comment='vector-matrix multiply'
-			f.function(ret, 'operator*', args, body, comment=comment)
+			f.function(ret, 'operator*', args, body, comment=comment, constexpr=False)
 	def matmul_shortform(op, r):
 		nonlocal f
 		if r == None:
@@ -789,14 +807,14 @@ def gen_matrix(M, f):
 			if sqr in matricies:
 				f.function(f'{M}', 'operator*', f'{M} {mpass} l, {r} {mpass} r', f'''
 					return l * ({sqr})r;
-				''', comment=f'shortform for {M} * ({sqr}){r}')
+				''', comment=f'shortform for {M} * ({sqr}){r}', constexpr=False)
 		elif op == 'mv':
 			v = get_type(T, size[1])
 		
 			if v in vectors:
 				f.function(f'{r}', 'operator*', f'{M} {mpass} l, {r} r', f'''
 					return l * {v}(r, 1);
-				''', comment=f'shortform for {M} * {v}({r}, 1)')
+				''', comment=f'shortform for {M} * {v}({r}, 1)', constexpr=False)
 	
 	matmul('mm')
 	matmul('mv')
@@ -822,11 +840,13 @@ def gen_matrix(M, f):
 
 		import matrix_stuff as ms
 
+		f.inlined += ms.define_letterify(T, size[0]) + '\n'
 		f.source += ms.define_letterify(T, size[0]) + '\n'
 
-		f.function(f'{T}', 'determinant', f'{M} {mpass} mat', ms.gen_determinant_code(T, size[0]))
-		f.function(f'{M}', 'inverse', f'{M} {mpass} mat', ms.gen_inverse_code(M, T, size[0]))
+		f.function(f'{T}', 'determinant', f'{M} {mpass} mat', ms.gen_determinant_code(T, size[0]), constexpr=False)
+		f.function(f'{M}', 'inverse', f'{M} {mpass} mat', ms.gen_inverse_code(M, T, size[0]), constexpr=False)
 		
+		f.inlined += '\n#undef LETTERIFY\n\n'
 		f.source += '\n#undef LETTERIFY\n\n'
 
 	f += '}\n'
@@ -961,9 +981,12 @@ def transform3():
 	f += '}\n'
 	
 ########## What we want to generate
-floats =	[get_type(t) for t in ['float', 'double']]
-ints =		[get_type(t) for t in ['int8', 'int16', 'int', 'int64']]
-uints =		[get_type(t) for t in ['uint8', 'uint16', 'uint', 'uint64']]
+#floats =	[get_type(t) for t in ['float', 'double']]
+#ints =		[get_type(t) for t in ['int8', 'int16', 'int', 'int64']]
+#uints =		[get_type(t) for t in ['uint8', 'uint16', 'uint', 'uint64']]
+floats =	[get_type(t) for t in ['float']]
+ints =		[get_type(t) for t in ['int', 'int64']]
+uints =		[get_type(t) for t in ['uint8']]
 
 scalars = floats + ints + uints
 
@@ -978,7 +1001,7 @@ mat_sizes = [(2,2), (3,3), (4,4), (2,3), (3,4)]
 
 matricies = [
 	[ get_type('float', s) for s in mat_sizes ],
-	[ get_type('double', s) for s in mat_sizes ],
+	#[ get_type('double', s) for s in mat_sizes ],
 ]
 matricies = list(chain.from_iterable(matricies))
 
@@ -1005,7 +1028,7 @@ if len(sys.argv) > 1:
 import os
 
 dir = os.path.join('output')
-gen = srcgen.Generator(dir, default_constexpr=False, default_inline=False)
+gen = srcgen.Generator(dir, default_constexpr=True, default_inline=True)
 
 for s in scalars:
 	scalar_math(s, gen.add_file(s.name))
