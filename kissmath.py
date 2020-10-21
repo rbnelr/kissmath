@@ -351,6 +351,9 @@ def gen_vector(V, f):
 	def comparison_op(op, comment=''):
 		tmp = ', '.join(f'l.{d} {op} r.{d}' for d in dims)
 		f.function(f'{BV}', f'operator{op}', f'{V} l, {V} r', f'return {BV}({tmp});', comment=comment)
+	def comparison_func(func, op, comment=''):
+		tmp = ', '.join(f'l.{d} {op} r.{d}' for d in dims)
+		f.function(f'{BV}', func, f'{V} l, {V} r', f'return {BV}({tmp});', comment=comment)
 	
 	def unary_func(func, arg='v', ret=None, comment=''):
 		ret = ret or V
@@ -523,10 +526,12 @@ def gen_vector(V, f):
 			comparison_op('>=', comment="componentwise comparison returns a bool vector")
 			
 	if BV in vectors:
-		comparison_op('==', comment="componentwise comparison returns a bool vector")
-		comparison_op('!=', comment="componentwise comparison returns a bool vector")
-		f.function(f'bool', 'equal', f'{V} l, {V} r', 'return all(l == r);', comment='vectors are equal, equivalent to all(l == r)')
-	
+		comparison_func('equal', '==', comment="componentwise equality comparison, returns a bool vector")
+		comparison_func('nequal', '!=', comment="componentwise inequality comparison, returns a bool vector")
+		
+		f.function(f'bool', 'operator==', f'{V} l, {V} r', f'return %s;' % ' && '.join(f'(l.{d} == r.{d})' for d in dims), comment='full equality comparison, returns true only if all components are equal')
+		f.function(f'bool', 'operator!=', f'{V} l, {V} r', f'return %s;' % ' || '.join(f'(l.{d} != r.{d})' for d in dims), comment='full inequality comparison, returns true if any components are inequal')
+		
 		f.function(f'{V}', 'select', f'{BV} c, {V} l, {V} r', f'return {V}(%s);' % ', '.join(f'c.{d} ? l.{d} : r.{d}' for d in dims),
 			comment='componentwise ternary (c ? l : r)')
 	
